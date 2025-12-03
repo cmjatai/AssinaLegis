@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Menu?>
+<?import javafx.scene.control.MenuBar?>
+<?import javafx.scene.control.MenuItem?>
+<?import javafx.scene.control.SeparatorMenuItem?>
+<?import javafx.scene.control.TextArea?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<BorderPane xmlns:fx="http://javafx.com/fxml/1"
+            xmlns="http://javafx.com/javafx/21"
+            fx:controller="br.leg.go.jatai.assinalegis.MainController"
+            prefHeight="600.0"
+            prefWidth="800.0">
+
+    <top>
+        <MenuBar>
+            <menus>
+                <Menu text="Arquivo">
+                    <items>
+                        <MenuItem text="Selecionar arquivo..." onAction="#onSelectFile"/>
+                        <MenuItem text="Configurações..." onAction="#onConfig"/>
+                        <SeparatorMenuItem/>
+                        <MenuItem text="Sair" onAction="#onExit" fx:id="exitMenuItem"/>
+                    </items>
+                </Menu>
+                <Menu text="Ajuda">
+                    <items>
+                        <MenuItem text="Sobre" onAction="#onAbout"/>
+                    </items>
+                </Menu>
+            </menus>
+        </MenuBar>
+    </top>
+
+    <center>
+        <VBox spacing="10" alignment="CENTER">
+            <padding>
+                <Insets top="20" right="20" bottom="20" left="20"/>
+            </padding>
+
+            <Label text="AssinaLegis" style="-fx-font-size: 24px; -fx-font-weight: bold;"/>
+            <Label text="Aplicativo de Assinatura Digital" style="-fx-font-size: 14px;"/>
+
+            <HBox spacing="10" alignment="CENTER">
+                <padding>
+                    <Insets top="20"/>
+                </padding>
+                <Button fx:id="selectFileButton" text="Selecionar Arquivo" onAction="#onSelectFile" prefWidth="150"/>
+                <Button text="Assinar" onAction="#onSign" prefWidth="150"/>
+            </HBox>
+
+            <TextArea fx:id="logArea"
+                      prefHeight="300.0"
+                      prefWidth="700.0"
+                      editable="false"
+                      wrapText="true">
+                <VBox.margin>
+                    <Insets top="20"/>
+                </VBox.margin>
+            </TextArea>
+        </VBox>
+    </center>
+
+    <bottom>
+        <HBox alignment="CENTER_LEFT" style="-fx-background-color: #f0f0f0;">
+            <padding>
+                <Insets top="5" right="10" bottom="5" left="10"/>
+            </padding>
+            <Label fx:id="statusLabel" text="Pronto"/>
+        </HBox>
+    </bottom>
+
+</BorderPane>

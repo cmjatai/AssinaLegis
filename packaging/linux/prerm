@@ -1,0 +1,15 @@
+#!/bin/sh
+
+# Remover link simbólico
+rm -f /usr/bin/assinalegis
+
+# Remover arquivo .desktop
+rm -f /usr/share/applications/assinalegis-AssinaLegis.desktop
+
+# Remover ícone
+rm -f /usr/share/pixmaps/assinalegis.png
+
+# Atualizar banco de dados
+update-desktop-database /usr/share/applications || true
+
+exit 0

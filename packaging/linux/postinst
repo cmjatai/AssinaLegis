@@ -1,0 +1,36 @@
+#!/bin/sh
+
+APP_DIR="/opt/assinalegis"
+DESKTOP_FILE="assinalegis-AssinaLegis.desktop"
+ICON_FILE="AssinaLegis.png"
+
+# 1. Link executável para /usr/bin
+ln -sf "$APP_DIR/bin/AssinaLegis" /usr/bin/assinalegis
+
+# 2. Instalar arquivo .desktop em /usr/share/applications
+if [ -f "$APP_DIR/lib/$DESKTOP_FILE" ]; then
+    cp "$APP_DIR/lib/$DESKTOP_FILE" "/usr/share/applications/$DESKTOP_FILE"
+
+    # Adicionar Keywords para facilitar a busca
+    if ! grep -q "Keywords=" "/usr/share/applications/$DESKTOP_FILE"; then
+        echo "Keywords=assinador;assinatura;digital;AssinaLegis;jatai;" >> "/usr/share/applications/$DESKTOP_FILE"
+    fi
+fi
+
+# 3. Instalar ícone em /usr/share/pixmaps (corrige o problema da engrenagem)
+if [ -f "$APP_DIR/lib/$ICON_FILE" ]; then
+    cp "$APP_DIR/lib/$ICON_FILE" "/usr/share/pixmaps/assinalegis.png"
+
+    # Atualizar o .desktop para usar o ícone do sistema
+    sed -i 's|Icon=.*|Icon=assinalegis|g' "/usr/share/applications/$DESKTOP_FILE"
+
+    # Adicionar StartupWMClass para agrupar janelas corretamente no Dock
+    if ! grep -q "StartupWMClass=" "/usr/share/applications/$DESKTOP_FILE"; then
+        echo "StartupWMClass=br.leg.go.jatai.assinalegis.App" >> "/usr/share/applications/$DESKTOP_FILE"
+    fi
+fi
+
+# 4. Atualizar banco de dados de desktop e ícones
+update-desktop-database /usr/share/applications || true
+
+exit 0
