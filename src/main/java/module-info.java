@@ -3,6 +3,8 @@ module br.leg.go.jatai.assinalegis {
     requires javafx.fxml;
     requires javafx.graphics;
     requires javafx.base;
+    requires javafx.swing;
+    requires java.desktop;
     requires org.apache.pdfbox;
     requires org.bouncycastle.provider;
     requires org.bouncycastle.pkix;

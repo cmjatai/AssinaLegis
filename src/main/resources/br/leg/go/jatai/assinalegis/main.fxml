@@ -41,6 +41,9 @@
 
     <center>
         <HBox alignment="CENTER">
+            <padding>
+                <Insets top="10" right="10" bottom="10" left="10"/>
+            </padding>
             <VBox spacing="10" alignment="CENTER" prefWidth="400.0" style="-fx-background-color: #f0f0f0;">
                 <padding>
                     <Insets top="20" right="20" bottom="20" left="20"/>
@@ -50,6 +53,9 @@
                     <Button text="Atualizar" onAction="#onRefreshDocuments"/>
                 </HBox>
                 <ListView fx:id="documentListView" VBox.vgrow="ALWAYS"/>
+            </VBox>
+            <VBox fx:id="vBoxPreviewPage" spacing="10" alignment="CENTER" prefWidth="800.0" style="-fx-background-color: #aaaaaa;">
+
             </VBox>
             <VBox spacing="10" alignment="TOP_CENTER" HBox.hgrow="ALWAYS">
                 <padding>

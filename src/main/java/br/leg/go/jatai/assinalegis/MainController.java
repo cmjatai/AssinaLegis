@@ -9,24 +9,33 @@ import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.image.WritableImage;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.util.Pair;
+import javafx.embed.swing.SwingFXUtils;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URL;
 import java.security.KeyStore;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.awt.image.BufferedImage;
 
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.rendering.PDFRenderer;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -52,6 +61,9 @@ public class MainController {
 
     @FXML
     private ListView<DocumentItem> documentListView;
+
+    @FXML
+    private VBox vBoxPreviewPage;
 
     private File selectedFile;
     private ConfigService configService;
@@ -159,9 +171,68 @@ public class MainController {
     }
 
     private void handleDocumentSelection(DocumentItem item) {
+
         logArea.appendText("Item selecionado: " + item.getHeader() + "\n");
-        logArea.appendText("JSON: " + item.getJsonData() + "\n");
-        // Aqui será implementada a funcionalidade futura
+        // convertendo o JSON de volta para exibir detalhes
+        ObjectMapper mapper = new ObjectMapper();
+        try {
+            JsonNode jsonNode = mapper.readTree(item.getJsonData());
+            String textoOriginal = jsonNode.get("texto_original").asText();
+
+            logArea.appendText("Texto Original:\n" + textoOriginal + "\n");
+
+            if (textoOriginal != null && !textoOriginal.isEmpty()) {
+                loadPdfPreview(textoOriginal);
+            }
+
+        } catch (JsonProcessingException e) {
+            logArea.appendText("Erro ao processar JSON: " + e.getMessage() + "\n");
+        }
+    }
+
+    private void loadPdfPreview(String urlString) {
+        vBoxPreviewPage.getChildren().clear();
+        Label loadingLabel = new Label("Carregando visualização...");
+        vBoxPreviewPage.getChildren().add(loadingLabel);
+
+        new Thread(() -> {
+            try {
+                URL url = new URL(urlString);
+                try (InputStream is = url.openStream();
+                     PDDocument document = org.apache.pdfbox.Loader.loadPDF(is.readAllBytes())) {
+
+                    PDFRenderer pdfRenderer = new PDFRenderer(document);
+                    // Renderiza apenas a primeira página para preview rápido
+                    // Ajustado para 200 DPI (melhor para tela) e RGB explícito
+                    BufferedImage bim = pdfRenderer.renderImageWithDPI(0, 200, org.apache.pdfbox.rendering.ImageType.RGB);
+                    WritableImage image = SwingFXUtils.toFXImage(bim, null);
+
+                    Platform.runLater(() -> {
+                        vBoxPreviewPage.getChildren().clear();
+                        ImageView imageView = new ImageView(image);
+                        imageView.setPreserveRatio(true);
+                        imageView.setSmooth(true); // Importante para qualidade no redimensionamento
+                        imageView.setCache(true);  // Melhora performance
+                        imageView.fitWidthProperty().bind(vBoxPreviewPage.widthProperty().subtract(20));
+
+                        ScrollPane scrollPane = new ScrollPane(imageView);
+                        scrollPane.setFitToWidth(true);
+                        scrollPane.setPannable(true);
+                        VBox.setVgrow(scrollPane, javafx.scene.layout.Priority.ALWAYS);
+
+                        vBoxPreviewPage.getChildren().add(scrollPane);
+                    });
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                Platform.runLater(() -> {
+                    vBoxPreviewPage.getChildren().clear();
+                    Label errorLabel = new Label("Erro ao carregar PDF: " + e.getMessage());
+                    errorLabel.setWrapText(true);
+                    vBoxPreviewPage.getChildren().add(errorLabel);
+                });
+            }
+        }).start();
     }
 
     public static class DocumentItem {
