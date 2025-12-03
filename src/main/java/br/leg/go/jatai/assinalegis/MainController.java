@@ -39,7 +39,7 @@ public class MainController {
 
     @FXML
     public void initialize() {
-        configService = new ConfigService();
+        configService = ConfigService.getInstance();
         statusLabel.setText("Pronto para assinar documentos");
         logArea.setText("AssinaLegis iniciado.\n");
 

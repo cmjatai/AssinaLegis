@@ -23,7 +23,7 @@ public class ConfigController {
 
     @FXML
     public void initialize() {
-        configService = new ConfigService();
+        configService = ConfigService.getInstance();
         loadConfig();
     }
 
