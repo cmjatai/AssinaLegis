@@ -87,7 +87,8 @@ public class ApiService {
 
         // Garante a barra final antes dos parâmetros
         if (urlBuilder.charAt(urlBuilder.length() - 1) != '/') {
-            urlBuilder.append("/");
+            if (!urlBuilder.toString().endsWith("token"))
+                urlBuilder.append("/");
         }
 
         if (params != null && !params.isEmpty()) {

@@ -11,14 +11,22 @@ import javafx.scene.layout.GridPane;
 import javafx.stage.FileChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
+import javafx.util.Pair;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Controlador principal da interface do AssinaLegis.
@@ -29,10 +37,16 @@ public class MainController {
     private Label statusLabel;
 
     @FXML
+    private Label statusUserLabel;
+
+    @FXML
     private TextArea logArea;
 
     @FXML
     private Button selectFileButton;
+
+    @FXML
+    private Button authButton;
 
     private File selectedFile;
     private ConfigService configService;
@@ -43,10 +57,12 @@ public class MainController {
         statusLabel.setText("Pronto para assinar documentos");
         logArea.setText("AssinaLegis iniciado.\n");
 
-        Platform.runLater(() -> {
+        updateAuthButton();
+
+        /*Platform.runLater(() -> {
             Stage stage = (Stage) statusLabel.getScene().getWindow();
             stage.setMaximized(true);
-        });
+        });*/
     }
 
     @FXML
@@ -240,5 +256,113 @@ public class MainController {
         logArea.appendText("AssinaLegis v1.0.0\n");
         logArea.appendText("Câmara Municipal de Jataí\n");
         logArea.appendText("Desenvolvido para assinatura digital de documentos.\n");
+    }
+
+    private void updateAuthButton() {
+        String token = configService.getToken();
+        if (token == null || token.isEmpty()) {
+            authButton.setText("Acessar");
+        } else {
+            authButton.setText("Sair");
+        }
+    }
+
+    @FXML
+    private void onAuthAction() {
+        String token = configService.getToken();
+        if (token == null || token.isEmpty()) {
+            // Login
+            showLoginDialog();
+        } else {
+            // Logout
+            statusUserLabel.setText("");
+            configService.setToken(null);
+            updateAuthButton();
+            logArea.appendText("Logout realizado.\n");
+        }
+    }
+
+    private void showLoginDialog() {
+        Dialog<Pair<String, String>> dialog = new Dialog<>();
+        dialog.setTitle("Login");
+        dialog.setHeaderText("Entre com suas credenciais");
+
+        ButtonType loginButtonType = new ButtonType("Conectar", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(loginButtonType, ButtonType.CANCEL);
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        grid.setPadding(new javafx.geometry.Insets(20, 150, 10, 10));
+
+        TextField username = new TextField();
+        username.setPromptText("Username");
+        PasswordField password = new PasswordField();
+        password.setPromptText("Password");
+
+        grid.add(new Label("Username:"), 0, 0);
+        grid.add(username, 1, 0);
+        grid.add(new Label("Password:"), 0, 1);
+        grid.add(password, 1, 1);
+
+        dialog.getDialogPane().setContent(grid);
+
+        Platform.runLater(username::requestFocus);
+
+        dialog.setResultConverter(dialogButton -> {
+            if (dialogButton == loginButtonType) {
+                return new Pair<>(username.getText(), password.getText());
+            }
+            return null;
+        });
+
+        Optional<Pair<String, String>> result = dialog.showAndWait();
+
+        result.ifPresent(usernamePassword -> {
+            String u = usernamePassword.getKey();
+            String p = usernamePassword.getValue();
+            performLogin(u, p);
+        });
+    }
+
+    private void performLogin(String username, String password) {
+        new Thread(() -> {
+            try {
+                Map<String, Object> form = new HashMap<>();
+                form.put("username", username);
+                form.put("password", password);
+
+                InputStream response = ApiService.getInstance().post("auth", "token", null, null, form, null);
+
+                ObjectMapper mapper = new ObjectMapper();
+                JsonNode root = mapper.readTree(response);
+
+                if (root.has("token")) {
+                    String token = root.get("token").asText();
+                    Platform.runLater(() -> {
+                        configService.setToken(token);
+                        updateAuthButton();
+                        logArea.appendText("Login realizado com sucesso.\n");
+                        statusLabel.setText("Logado como " + username);
+                        statusUserLabel.setText("Usuário: " + username);
+                    });
+                } else {
+                    throw new Exception("Token não encontrado na resposta.");
+                }
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                Platform.runLater(() -> {
+                    logArea.appendText("Erro no login: " + e.getMessage() + "\n");
+                    statusUserLabel.setText("");
+
+                    Alert alert = new Alert(Alert.AlertType.ERROR);
+                    alert.setTitle("Erro de Login");
+                    alert.setHeaderText("Falha ao conectar");
+                    alert.setContentText(e.getMessage());
+                    alert.showAndWait();
+                });
+            }
+        }).start();
     }
 }

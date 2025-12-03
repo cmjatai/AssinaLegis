@@ -90,6 +90,7 @@ public class ConfigService {
     }
 
     public void setToken(String token) {
+        token = token != null ? token : "";
         prefs.put(KEY_TOKEN, token);
         notifyObservers(KEY_TOKEN, token);
     }

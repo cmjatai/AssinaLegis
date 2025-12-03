@@ -26,7 +26,7 @@ public class App extends Application implements ConfigService.ConfigObserver {
         this.stage = stage;
         ConfigService.getInstance().addObserver(this);
 
-        scene = new Scene(loadFXML("main"), 800, 600);
+        scene = new Scene(loadFXML("main"));
 
         // Define título inicial
         stage.setTitle("AssinaLegis");
