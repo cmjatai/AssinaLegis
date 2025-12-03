@@ -74,18 +74,29 @@ public class MainController {
     @FXML
     private void onRefreshDocuments() {
         logArea.appendText("Atualizando lista de documentos...\n");
+        try {
+            refreshDocumentList();
+        } catch (Exception e) {
+            e.printStackTrace();
+            logArea.appendText("Erro ao atualizar documentos: " + e.getMessage() + "\n");
+        }
+    }
+    private void refreshDocumentList() throws Exception {
+        InputStream response = ApiService.getInstance().get("materia", "proposicao", null, null, null);
+
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode root = mapper.readTree(response);
 
         // Basta manipular a lista existente. A UI será atualizada automaticamente.
         ObservableList<DocumentItem> items = documentListView.getItems();
         items.clear(); // Limpa os itens atuais
 
-        // Simula a busca de novos dados
-        for (int i = 1; i <= 5; i++) {
-            items.add(new DocumentItem(
-                "Documento Atualizado " + i,
-                "Descrição atualizada em " + java.time.LocalTime.now(),
-                "{\"id\": " + (100 + i) + ", \"status\": \"updated\"}"
-            ));
+        if (root.has("results") && root.get("results").isArray()) {
+            for (JsonNode node : root.get("results")) {
+                String header = node.has("__str__") ? node.get("__str__").asText() : "";
+                String description = node.has("descricao") ? node.get("descricao").asText() : "";
+                items.add(new DocumentItem(header, description, node.toString()));
+            }
         }
 
         logArea.appendText("Lista de documentos atualizada com " + items.size() + " itens.\n");
