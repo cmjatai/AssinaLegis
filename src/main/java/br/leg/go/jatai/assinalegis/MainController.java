@@ -42,6 +42,11 @@ public class MainController {
         configService = new ConfigService();
         statusLabel.setText("Pronto para assinar documentos");
         logArea.setText("AssinaLegis iniciado.\n");
+
+        Platform.runLater(() -> {
+            Stage stage = (Stage) statusLabel.getScene().getWindow();
+            stage.setMaximized(true);
+        });
     }
 
     @FXML
