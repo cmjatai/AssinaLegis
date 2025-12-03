@@ -113,6 +113,7 @@ public class MainController {
     private void initializeDocumentList() {
         ObservableList<DocumentItem> items = FXCollections.observableArrayList();
         documentListView.setItems(items);
+        documentListView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
 
         documentListView.setCellFactory(param -> new ListCell<DocumentItem>() {
             @Override
