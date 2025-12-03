@@ -64,56 +64,56 @@ public class MainController {
 
         updateAuthButton();
         initializeDocumentList();
+        onRefreshDocuments();
 
         Platform.runLater(() -> {
             Stage stage = (Stage) statusLabel.getScene().getWindow();
             stage.setMaximized(true);
         });
     }
-
     @FXML
     private void onRefreshDocuments() {
         logArea.appendText("Atualizando lista de documentos...\n");
-        try {
-            refreshDocumentList();
-        } catch (Exception e) {
-            e.printStackTrace();
-            logArea.appendText("Erro ao atualizar documentos: " + e.getMessage() + "\n");
-        }
+        refreshDocumentList();
     }
-    private void refreshDocumentList() throws Exception {
-        InputStream response = ApiService.getInstance().get("materia", "proposicao", null, null, null);
 
-        ObjectMapper mapper = new ObjectMapper();
-        JsonNode root = mapper.readTree(response);
+    private void refreshDocumentList() {
+        new Thread(() -> {
+            try {
+                Map<String, Object> params = new HashMap<>();
+                params.put("o", "-id");
+                params.put("page_size", 100);
+                InputStream response = ApiService.getInstance().get("materia", "proposicao", null, null, params);
 
-        // Basta manipular a lista existente. A UI será atualizada automaticamente.
-        ObservableList<DocumentItem> items = documentListView.getItems();
-        items.clear(); // Limpa os itens atuais
+                ObjectMapper mapper = new ObjectMapper();
+                JsonNode root = mapper.readTree(response);
 
-        if (root.has("results") && root.get("results").isArray()) {
-            for (JsonNode node : root.get("results")) {
-                String header = node.has("__str__") ? node.get("__str__").asText() : "";
-                String description = node.has("descricao") ? node.get("descricao").asText() : "";
-                items.add(new DocumentItem(header, description, node.toString()));
+                Platform.runLater(() -> {
+                    ObservableList<DocumentItem> items = documentListView.getItems();
+                    items.clear();
+
+                    if (root.has("results") && root.get("results").isArray()) {
+                        for (JsonNode node : root.get("results")) {
+                            String header = node.has("__str__") ? node.get("__str__").asText() : "";
+                            String description = node.has("descricao") ? node.get("descricao").asText() : "";
+                            items.add(new DocumentItem(header, description, node.toString()));
+                        }
+                    }
+                    logArea.appendText("Lista de documentos atualizada com " + items.size() + " itens.\n");
+                });
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                Platform.runLater(() ->
+                    logArea.appendText("Erro ao atualizar documentos: " + e.getMessage() + "\n")
+                );
             }
-        }
-
-        logArea.appendText("Lista de documentos atualizada com " + items.size() + " itens.\n");
+        }).start();
     }
-
     private void initializeDocumentList() {
         ObservableList<DocumentItem> items = FXCollections.observableArrayList();
-
-        for (int i = 1; i <= 7; i++) {
-            items.add(new DocumentItem(
-                "Documento " + i,
-                "Descrição do documento " + i + " para assinatura.",
-                "{\"id\": " + i + ", \"type\": \"doc\", \"status\": \"pending\"}"
-            ));
-        }
-
         documentListView.setItems(items);
+
         documentListView.setCellFactory(param -> new ListCell<DocumentItem>() {
             @Override
             protected void updateItem(DocumentItem item, boolean empty) {
@@ -131,7 +131,13 @@ public class MainController {
 
                     Label descLabel = new Label(item.getDescription());
                     descLabel.setWrapText(true);
-                    descLabel.setStyle("-fx-text-fill: #666666;");
+
+                    // Ajusta a cor do texto quando selecionado para garantir contraste
+                    descLabel.styleProperty().bind(
+                        javafx.beans.binding.Bindings.when(selectedProperty())
+                            .then("-fx-text-fill: -fx-selection-bar-text;")
+                            .otherwise("-fx-text-fill: #666666;")
+                    );
 
                     // Vincula a largura dos labels à largura do ListView para evitar scroll horizontal
                     // Subtrai um valor para compensar padding e barra de rolagem
