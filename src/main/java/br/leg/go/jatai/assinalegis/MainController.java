@@ -124,10 +124,19 @@ public class MainController {
                     setGraphic(null);
                 } else {
                     VBox vBox = new VBox(5);
+
                     Label headerLabel = new Label(item.getHeader());
                     headerLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
+                    headerLabel.setWrapText(true);
+
                     Label descLabel = new Label(item.getDescription());
+                    descLabel.setWrapText(true);
                     descLabel.setStyle("-fx-text-fill: #666666;");
+
+                    // Vincula a largura dos labels à largura do ListView para evitar scroll horizontal
+                    // Subtrai um valor para compensar padding e barra de rolagem
+                    headerLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(35));
+                    descLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(35));
 
                     vBox.getChildren().addAll(headerLabel, descLabel);
                     setGraphic(vBox);
