@@ -39,32 +39,40 @@
     </top>
 
     <center>
-        <VBox spacing="10" alignment="CENTER">
-            <padding>
-                <Insets top="20" right="20" bottom="20" left="20"/>
-            </padding>
-
-            <Label text="AssinaLegis" style="-fx-font-size: 24px; -fx-font-weight: bold;"/>
-            <Label text="Aplicativo de Assinatura Digital" style="-fx-font-size: 14px;"/>
-
-            <HBox spacing="10" alignment="CENTER">
+        <HBox alignment="CENTER">
+            <VBox spacing="10" alignment="CENTER" prefWidth="400.0" style="-fx-background-color: #f0f0f0;">
                 <padding>
-                    <Insets top="20"/>
+                    <Insets top="20" right="20" bottom="20" left="20"/>
                 </padding>
-                <Button fx:id="selectFileButton" text="Selecionar Arquivo" onAction="#onSelectFile" prefWidth="150"/>
-                <Button text="Assinar" onAction="#onSign" prefWidth="150"/>
-            </HBox>
+                <Label text="Novo Painel" style="-fx-font-size: 16px;"/>
+            </VBox>
+            <VBox spacing="10" alignment="TOP_CENTER" HBox.hgrow="ALWAYS">
+                <padding>
+                    <Insets top="20" right="20" bottom="20" left="20"/>
+                </padding>
 
-            <TextArea fx:id="logArea"
-                      prefHeight="300.0"
-                      prefWidth="700.0"
-                      editable="false"
-                      wrapText="true">
-                <VBox.margin>
-                    <Insets top="20"/>
-                </VBox.margin>
-            </TextArea>
-        </VBox>
+                <Label text="AssinaLegis" style="-fx-font-size: 24px; -fx-font-weight: bold;"/>
+                <Label text="Aplicativo de Assinatura Digital" style="-fx-font-size: 14px;"/>
+
+                <HBox spacing="10" alignment="CENTER">
+                    <padding>
+                        <Insets top="20"/>
+                    </padding>
+                    <Button fx:id="selectFileButton" text="Selecionar Arquivo" onAction="#onSelectFile" prefWidth="150"/>
+                    <Button text="Assinar" onAction="#onSign" prefWidth="150"/>
+                </HBox>
+
+                <TextArea fx:id="logArea"
+                          prefHeight="300.0"
+                          prefWidth="700.0"
+                          editable="false"
+                          wrapText="true">
+                    <VBox.margin>
+                        <Insets top="20"/>
+                    </VBox.margin>
+                </TextArea>
+            </VBox>
+        </HBox>
     </center>
 
     <bottom>
