@@ -1,6 +1,8 @@
 package br.leg.go.jatai.assinalegis;
 
 import javafx.application.Platform;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
@@ -8,6 +10,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
@@ -17,7 +20,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -48,6 +50,9 @@ public class MainController {
     @FXML
     private Button authButton;
 
+    @FXML
+    private ListView<DocumentItem> documentListView;
+
     private File selectedFile;
     private ConfigService configService;
 
@@ -58,11 +63,94 @@ public class MainController {
         logArea.setText("AssinaLegis iniciado.\n");
 
         updateAuthButton();
+        initializeDocumentList();
 
-        /*Platform.runLater(() -> {
+        Platform.runLater(() -> {
             Stage stage = (Stage) statusLabel.getScene().getWindow();
             stage.setMaximized(true);
-        });*/
+        });
+    }
+
+    @FXML
+    private void onRefreshDocuments() {
+        logArea.appendText("Atualizando lista de documentos...\n");
+
+        // Basta manipular a lista existente. A UI será atualizada automaticamente.
+        ObservableList<DocumentItem> items = documentListView.getItems();
+        items.clear(); // Limpa os itens atuais
+
+        // Simula a busca de novos dados
+        for (int i = 1; i <= 5; i++) {
+            items.add(new DocumentItem(
+                "Documento Atualizado " + i,
+                "Descrição atualizada em " + java.time.LocalTime.now(),
+                "{\"id\": " + (100 + i) + ", \"status\": \"updated\"}"
+            ));
+        }
+
+        logArea.appendText("Lista de documentos atualizada com " + items.size() + " itens.\n");
+    }
+
+    private void initializeDocumentList() {
+        ObservableList<DocumentItem> items = FXCollections.observableArrayList();
+
+        for (int i = 1; i <= 7; i++) {
+            items.add(new DocumentItem(
+                "Documento " + i,
+                "Descrição do documento " + i + " para assinatura.",
+                "{\"id\": " + i + ", \"type\": \"doc\", \"status\": \"pending\"}"
+            ));
+        }
+
+        documentListView.setItems(items);
+        documentListView.setCellFactory(param -> new ListCell<DocumentItem>() {
+            @Override
+            protected void updateItem(DocumentItem item, boolean empty) {
+                super.updateItem(item, empty);
+
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                } else {
+                    VBox vBox = new VBox(5);
+                    Label headerLabel = new Label(item.getHeader());
+                    headerLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
+                    Label descLabel = new Label(item.getDescription());
+                    descLabel.setStyle("-fx-text-fill: #666666;");
+
+                    vBox.getChildren().addAll(headerLabel, descLabel);
+                    setGraphic(vBox);
+                }
+            }
+        });
+
+        documentListView.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
+            if (newValue != null) {
+                handleDocumentSelection(newValue);
+            }
+        });
+    }
+
+    private void handleDocumentSelection(DocumentItem item) {
+        logArea.appendText("Item selecionado: " + item.getHeader() + "\n");
+        logArea.appendText("JSON: " + item.getJsonData() + "\n");
+        // Aqui será implementada a funcionalidade futura
+    }
+
+    public static class DocumentItem {
+        private final String header;
+        private final String description;
+        private final String jsonData;
+
+        public DocumentItem(String header, String description, String jsonData) {
+            this.header = header;
+            this.description = description;
+            this.jsonData = jsonData;
+        }
+
+        public String getHeader() { return header; }
+        public String getDescription() { return description; }
+        public String getJsonData() { return jsonData; }
     }
 
     @FXML
