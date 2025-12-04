@@ -37,8 +37,8 @@ public class MainController {
     @FXML
     private Label statusUserLabel;
 
-    @FXML
     private TextArea logArea;
+    private Stage logStage;
 
     @FXML
     private Button selectFileButton;
@@ -55,6 +55,28 @@ public class MainController {
     @FXML
     public void initialize() {
         configService = ConfigService.getInstance();
+
+        // Inicializa logArea e logStage
+        logArea = new TextArea();
+        logArea.setEditable(false);
+        logArea.setWrapText(true);
+
+        logStage = new Stage();
+        logStage.setTitle("Log do Sistema");
+        logStage.initModality(Modality.NONE);
+
+        javafx.scene.layout.VBox logRoot = new javafx.scene.layout.VBox(logArea);
+        logRoot.setPadding(new javafx.geometry.Insets(10));
+        javafx.scene.layout.VBox.setVgrow(logArea, javafx.scene.layout.Priority.ALWAYS);
+
+        Scene logScene = new Scene(logRoot, 600, 400);
+        logStage.setScene(logScene);
+
+        logStage.setOnCloseRequest(event -> {
+            event.consume();
+            logStage.hide();
+        });
+
         statusLabel.setText("Pronto para assinar documentos");
         logArea.setText("AssinaLegis iniciado.\n");
 
@@ -70,6 +92,14 @@ public class MainController {
                 stage.setMaximized(true);
             }
         });
+    }
+
+    @FXML
+    private void onViewLog() {
+        if (logStage != null) {
+            logStage.show();
+            logStage.toFront();
+        }
     }
 
     @FXML

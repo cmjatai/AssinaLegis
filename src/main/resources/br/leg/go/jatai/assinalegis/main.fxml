@@ -40,35 +40,15 @@
     </top>
 
     <center>
-        <HBox alignment="CENTER">
-            <fx:include source="document_viewer.fxml" fx:id="documentViewer"/>
-            <VBox fx:id="vBoxActionsAndLogs" spacing="10" alignment="TOP_CENTER" HBox.hgrow="ALWAYS"   style="-fx-background-color: #dddddd;">
-                <padding>
-                    <Insets top="5" right="5" bottom="5" left="5"/>
-                </padding>
-
-                <Label text="AssinaLegis" style="-fx-font-size: 24px; -fx-font-weight: bold;"/>
-                <Label text="Aplicativo de Assinatura Digital" style="-fx-font-size: 14px;"/>
-
+        <VBox alignment="TOP_CENTER" spacing="10">
+            <VBox fx:id="vBoxActions" spacing="10" alignment="TOP_CENTER" HBox.hgrow="ALWAYS"   style="-fx-background-color: #dddddd;">
                 <HBox spacing="10" alignment="CENTER">
-                    <padding>
-                        <Insets top="20"/>
-                    </padding>
                     <Button fx:id="selectFileButton" text="Selecionar Arquivo" onAction="#onSelectFile" prefWidth="150"/>
                     <Button text="Assinar" onAction="#onSign" prefWidth="150"/>
                 </HBox>
-
-                <TextArea fx:id="logArea"
-                          prefHeight="300.0"
-                          prefWidth="700.0"
-                          editable="false"
-                          wrapText="true">
-                    <VBox.margin>
-                        <Insets top="20"/>
-                    </VBox.margin>
-                </TextArea>
             </VBox>
-        </HBox>
+            <fx:include source="document_viewer.fxml" fx:id="documentViewer"/>
+        </VBox>
     </center>
 
     <bottom>
@@ -76,6 +56,7 @@
             <padding>
                 <Insets top="5" right="10" bottom="5" left="10"/>
             </padding>
+            <Button text="Ver Log" onAction="#onViewLog"/>
             <Label fx:id="statusLabel" text="Pronto" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
             <Label fx:id="statusUserLabel" text="" HBox.hgrow="ALWAYS"/>
             <Button fx:id="authButton" text="Acessar" onAction="#onAuthAction"/>

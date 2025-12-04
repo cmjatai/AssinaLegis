@@ -22,7 +22,6 @@ import javafx.scene.shape.Rectangle;
 import javafx.scene.transform.Scale;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -40,7 +39,6 @@ import java.util.function.Consumer;
 public class DocumentViewerController {
 
     @FXML private ListView<DocumentItem> documentListView;
-    @FXML private VBox vBoxPreviewPage;
     @FXML private ScrollPane scrollPane;
     @FXML private StackPane contentHolder;
 
