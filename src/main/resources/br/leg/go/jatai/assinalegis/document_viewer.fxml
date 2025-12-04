@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ListView?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<HBox xmlns:fx="http://javafx.com/fxml/1"
+      xmlns="http://javafx.com/javafx/21"
+      fx:controller="br.leg.go.jatai.assinalegis.DocumentViewerController"
+      alignment="CENTER">
+
+    <VBox fx:id="vBoxListProps"  spacing="0" alignment="CENTER" prefWidth="320.0" minWidth="320.0" maxWidth="320.0" HBox.hgrow="NEVER" style="-fx-background-color: #f0f0f0;">
+        <HBox alignment="CENTER_LEFT" spacing="5">
+            <padding>
+                <Insets top="5" right="5" bottom="5" left="5"/>
+            </padding>
+            <Label text="Documentos para Assinatura" maxWidth="Infinity" HBox.hgrow="ALWAYS" style="-fx-font-size: 12px; -fx-font-weight: bold;"/>
+            <Button text="Atualizar" onAction="#onRefreshDocuments"/>
+        </HBox>
+        <ListView fx:id="documentListView" VBox.vgrow="ALWAYS"/>
+    </VBox>
+    <VBox fx:id="vBoxPreviewPage" spacing="10" alignment="CENTER" prefWidth="800.0" style="-fx-background-color: #aaaaaa;">
+
+    </VBox>
+
+</HBox>
