@@ -118,6 +118,13 @@ public class AssinaturaService {
                     // 6. Carrega o documento assinado e salva no item
                     PDDocument signedDoc = Loader.loadPDF(baosSigned.toByteArray());
                     item.setPdDocumentSigned(signedDoc);
+
+                    // 7. Opcional: Salva o documento assinado em arquivo para verificação
+                    String userHome = System.getProperty("user.home");
+                    String nomeArquivo = userHome + File.separator + "documento_assinado_" + item.getJsonData().get("id") + ".pdf";
+                    try (FileOutputStream fos = new FileOutputStream(new File(nomeArquivo))) {
+                        fos.write(baosSigned.toByteArray());
+                    }
                 }
             }
         }

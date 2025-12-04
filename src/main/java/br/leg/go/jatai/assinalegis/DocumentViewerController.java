@@ -201,6 +201,9 @@ public class DocumentViewerController {
     }
 
     private void refreshDocumentList() {
+
+        ObservableList<DocumentItem> items = documentListView.getItems();
+        items.clear();
         new Thread(() -> {
             try {
                 Map<String, Object> params = new HashMap<>();
@@ -215,8 +218,6 @@ public class DocumentViewerController {
                 JsonNode root = mapper.readTree(response);
 
                 Platform.runLater(() -> {
-                    ObservableList<DocumentItem> items = documentListView.getItems();
-                    items.clear();
 
                     if (root.has("results") && root.get("results").isArray()) {
                         for (JsonNode node : root.get("results")) {
@@ -241,6 +242,20 @@ public class DocumentViewerController {
         }).start();
     }
 
+    private InputStream getInputStreamFromUrl(String urlString) throws IOException {
+        if (urlString != "null" && urlString != null && !urlString.isEmpty()) {
+            URL url = new URL(urlString);
+            java.net.HttpURLConnection connection = (java.net.HttpURLConnection) url.openConnection();
+            String token = configService.getToken();
+            if (token != null && !token.isEmpty()) {
+                connection.setRequestProperty("Authorization", "Token " + token);
+            }
+            return connection.getInputStream();
+        } else {
+            throw new IOException("URL inválida para obter InputStream: " + urlString);
+        }
+    }
+
     private void preloadPdf(DocumentItem item) {
         JsonNode jsonNode = item.getJsonData();
         if (jsonNode.has("texto_original")) {
@@ -248,8 +263,7 @@ public class DocumentViewerController {
             if (urlString != "null" && urlString != null && !urlString.isEmpty()) {
                 new Thread(() -> {
                     try {
-                        URL url = new URL(urlString);
-                        try (InputStream is = url.openStream()) {
+                        try (InputStream is = getInputStreamFromUrl(urlString)) {
                             PDDocument doc = org.apache.pdfbox.Loader.loadPDF(is.readAllBytes());
                             item.setPdDocument(doc);
                         }
@@ -403,12 +417,12 @@ public class DocumentViewerController {
         JsonNode jsonNode = item.getJsonData();
         if (jsonNode.has("texto_original")) {
             String textoOriginal = jsonNode.get("texto_original").asText();
-
-            log("Texto Original:\n" + textoOriginal + "\n");
-
-            if (textoOriginal != null && !textoOriginal.isEmpty()) {
-                loadPdfPreview(textoOriginal, item.getSavedPageIndex(), item.getSavedRect());
+            if (textoOriginal == "null" || textoOriginal == null || textoOriginal.isEmpty()) {
+                log("O documento selecionado não possui PDF disponível.\n");
+                clearPreview();
+                return;
             }
+            loadPdfPreview(textoOriginal, item.getSavedPageIndex(), item.getSavedRect());
         }
     }
 
@@ -433,8 +447,7 @@ public class DocumentViewerController {
 
         new Thread(() -> {
             try {
-                URL url = new URL(urlString);
-                try (InputStream is = url.openStream()) {
+                try (InputStream is = getInputStreamFromUrl(urlString)) {
                     currentDocument = org.apache.pdfbox.Loader.loadPDF(is.readAllBytes());
                     currentDocumentIsOwnedByItem = false;
                     pdfRenderer = new PDFRenderer(currentDocument);
