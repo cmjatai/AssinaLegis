@@ -42,7 +42,7 @@
     <center>
         <HBox alignment="CENTER">
             <fx:include source="document_viewer.fxml" fx:id="documentViewer"/>
-            <VBox fx:id="vBoxActionsAndLogs" spacing="10" alignment="TOP_CENTER" HBox.hgrow="ALWAYS">
+            <VBox fx:id="vBoxActionsAndLogs" spacing="10" alignment="TOP_CENTER" HBox.hgrow="ALWAYS"   style="-fx-background-color: #dddddd;">
                 <padding>
                     <Insets top="5" right="5" bottom="5" left="5"/>
                 </padding>

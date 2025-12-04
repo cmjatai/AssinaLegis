@@ -132,8 +132,8 @@ public class DocumentViewerController {
                 }
 
                 Rectangle rect = new Rectangle(rectWidth, rectHeight);
-                rect.setFill(Color.rgb(0, 0, 255, 0.3));
-                rect.setStroke(Color.BLUE);
+                rect.setFill(Color.rgb(0, 115, 183, 0.6));
+                rect.setStroke(Color.rgb(0, 115, 183, 1.0));
 
                 rect.setX(event.getX());
                 rect.setY(event.getY() - rectHeight);
@@ -247,7 +247,7 @@ public class DocumentViewerController {
 
                     // Desabilita o checkbox se data_envio não for nulo
                     JsonNode jsonData = item.getJsonData();
-                    boolean hasDataEnvio = jsonData.has("data_envio") && !jsonData.get("data_envio").isNull();
+                    boolean hasDataEnvio = jsonData.has("data_devolucao") && !jsonData.get("data_devolucao").isNull();
                     checkBox.setDisable(hasDataEnvio);
 
                     Label headerLabel = new Label(item.getHeader());
