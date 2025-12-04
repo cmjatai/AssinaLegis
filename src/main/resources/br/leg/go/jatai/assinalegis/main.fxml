@@ -41,14 +41,11 @@
 
     <center>
         <HBox alignment="CENTER">
-            <padding>
-                <Insets top="10" right="10" bottom="10" left="10"/>
-            </padding>
-            <VBox spacing="10" alignment="CENTER" prefWidth="400.0" style="-fx-background-color: #f0f0f0;">
-                <padding>
-                    <Insets top="20" right="20" bottom="20" left="20"/>
-                </padding>
-                <HBox alignment="CENTER_LEFT" spacing="10">
+            <VBox fx:id="vBoxListProps"  spacing="0" alignment="CENTER" prefWidth="320.0" minWidth="320.0" maxWidth="320.0" HBox.hgrow="NEVER" style="-fx-background-color: #f0f0f0;">
+                <HBox alignment="CENTER_LEFT" spacing="5">
+                    <padding>
+                        <Insets top="5" right="5" bottom="5" left="5"/>
+                    </padding>
                     <Label text="Documentos para Assinatura" maxWidth="Infinity" HBox.hgrow="ALWAYS" style="-fx-font-size: 12px; -fx-font-weight: bold;"/>
                     <Button text="Atualizar" onAction="#onRefreshDocuments"/>
                 </HBox>
@@ -57,9 +54,9 @@
             <VBox fx:id="vBoxPreviewPage" spacing="10" alignment="CENTER" prefWidth="800.0" style="-fx-background-color: #aaaaaa;">
 
             </VBox>
-            <VBox spacing="10" alignment="TOP_CENTER" HBox.hgrow="ALWAYS">
+            <VBox fx:id="vBoxActionsAndLogs" spacing="10" alignment="TOP_CENTER" HBox.hgrow="ALWAYS">
                 <padding>
-                    <Insets top="20" right="20" bottom="20" left="20"/>
+                    <Insets top="5" right="5" bottom="5" left="5"/>
                 </padding>
 
                 <Label text="AssinaLegis" style="-fx-font-size: 24px; -fx-font-weight: bold;"/>

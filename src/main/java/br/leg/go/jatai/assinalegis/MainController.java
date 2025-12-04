@@ -93,6 +93,7 @@ public class MainController {
             stage.setMaximized(true);
         });
     }
+    
     @FXML
     private void onRefreshDocuments() {
         logArea.appendText("Atualizando lista de documentos...\n");
