@@ -141,6 +141,23 @@ public class DocumentViewerController {
                 event.consume();
             }
         });
+
+        // Adiciona suporte a Zoom com Ctrl + Scroll no ScrollPane
+        scrollPane.addEventFilter(javafx.scene.input.ScrollEvent.SCROLL, event -> {
+            if (event.isControlDown()) {
+                double deltaY = event.getDeltaY();
+                if (deltaY > 0) {
+                    zoom(1.05);
+                } else if (deltaY < 0) {
+                    zoom(0.95);
+                }
+                event.consume();
+            }
+        });
+    }
+
+    private void zoom(double factor) {
+        zoomProperty.set(zoomProperty.get() * factor);
     }
 
     @FXML
@@ -358,12 +375,12 @@ public class DocumentViewerController {
 
     @FXML
     private void onZoomIn() {
-        zoomProperty.set(zoomProperty.get() * 1.25);
+        zoom(1.25);
     }
 
     @FXML
     private void onZoomOut() {
-        zoomProperty.set(zoomProperty.get() * 0.8);
+        zoom(0.8);
     }
 
     @FXML
