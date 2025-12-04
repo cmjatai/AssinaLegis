@@ -55,6 +55,7 @@ public class DocumentViewerController {
     private Consumer<String> logAction;
 
     private PDDocument currentDocument;
+    private boolean currentDocumentIsOwnedByItem = false;
     private PDFRenderer pdfRenderer;
     private int currentPageIndex = 0;
     private int totalPages = 0;
@@ -170,14 +171,15 @@ public class DocumentViewerController {
     }
 
     private void clearPreview() {
-        if (currentDocument != null) {
+        if (currentDocument != null && !currentDocumentIsOwnedByItem) {
             try {
                 currentDocument.close();
             } catch (IOException e) {
                 e.printStackTrace();
             }
-            currentDocument = null;
         }
+        currentDocument = null;
+        currentDocumentIsOwnedByItem = false;
 
         Platform.runLater(() -> {
             if (imageView != null) imageView.setImage(null);
@@ -194,7 +196,7 @@ public class DocumentViewerController {
             try {
                 Map<String, Object> params = new HashMap<>();
                 params.put("o", "-data_envio,-id");
-                params.put("page_size", 100);
+                params.put("page_size", 10);
                 params.put("expand", "autor");
                 InputStream response = ApiService.getInstance().get("materia", "proposicao", null, null, params);
 
@@ -209,7 +211,13 @@ public class DocumentViewerController {
                         for (JsonNode node : root.get("results")) {
                             String header = node.has("__str__") ? node.get("__str__").asText() : "";
                             String description = node.has("descricao") ? node.get("descricao").asText() : "";
-                            items.add(new DocumentItem(header, description, node));
+                            DocumentItem item = new DocumentItem(header, description, node);
+
+                            if (node.has("data_devolucao") && node.get("data_devolucao").isNull()) {
+                                preloadPdf(item);
+                            }
+
+                            items.add(item);
                         }
                     }
                     log("Lista de documentos atualizada com " + items.size() + " itens.\n");
@@ -220,6 +228,27 @@ public class DocumentViewerController {
                 log("Erro ao atualizar documentos: " + e.getMessage() + "\n");
             }
         }).start();
+    }
+
+    private void preloadPdf(DocumentItem item) {
+        JsonNode jsonNode = item.getJsonData();
+        if (jsonNode.has("texto_original")) {
+            String urlString = jsonNode.get("texto_original").asText();
+            if (urlString != null && !urlString.isEmpty()) {
+                new Thread(() -> {
+                    try {
+                        URL url = new URL(urlString);
+                        try (InputStream is = url.openStream()) {
+                            PDDocument doc = org.apache.pdfbox.Loader.loadPDF(is.readAllBytes());
+                            item.setPdDocument(doc);
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        log("Erro ao pré-carregar PDF: " + e.getMessage() + "\n");
+                    }
+                }).start();
+            }
+        }
     }
 
     private void initializeDocumentList() {
@@ -338,6 +367,11 @@ public class DocumentViewerController {
     private void handleDocumentSelection(DocumentItem item) {
         log("Item selecionado: " + item.getHeader() + "\n");
 
+        if (item.getPdDocument() != null) {
+            loadPdfPreview(item.getPdDocument(), item.getSavedPageIndex(), item.getSavedRect());
+            return;
+        }
+
         JsonNode jsonNode = item.getJsonData();
         if (jsonNode.has("texto_original")) {
             String textoOriginal = jsonNode.get("texto_original").asText();
@@ -350,6 +384,22 @@ public class DocumentViewerController {
         }
     }
 
+    private void loadPdfPreview(PDDocument doc, int initialPage, Rectangle initialRect) {
+        clearPreview();
+        currentDocument = doc;
+        currentDocumentIsOwnedByItem = true;
+        pdfRenderer = new PDFRenderer(currentDocument);
+        totalPages = currentDocument.getNumberOfPages();
+        currentPageIndex = initialPage;
+
+        new Thread(() -> {
+            renderCurrentPage();
+            if (initialRect != null) {
+                Platform.runLater(() -> restoreRect(initialRect));
+            }
+        }).start();
+    }
+
     private void loadPdfPreview(String urlString, int initialPage, Rectangle initialRect) {
         clearPreview();
 
@@ -358,6 +408,7 @@ public class DocumentViewerController {
                 URL url = new URL(urlString);
                 try (InputStream is = url.openStream()) {
                     currentDocument = org.apache.pdfbox.Loader.loadPDF(is.readAllBytes());
+                    currentDocumentIsOwnedByItem = false;
                     pdfRenderer = new PDFRenderer(currentDocument);
                     totalPages = currentDocument.getNumberOfPages();
                     currentPageIndex = initialPage;
@@ -482,6 +533,7 @@ public class DocumentViewerController {
         private final javafx.beans.property.BooleanProperty selected = new javafx.beans.property.SimpleBooleanProperty(false);
         private int savedPageIndex = 0;
         private Rectangle savedRect = null;
+        private PDDocument pdDocument;
 
         public DocumentItem(String header, String description, JsonNode jsonData) {
             this.header = header;
@@ -502,5 +554,8 @@ public class DocumentViewerController {
 
         public Rectangle getSavedRect() { return savedRect; }
         public void setSavedRect(Rectangle savedRect) { this.savedRect = savedRect; }
+
+        public PDDocument getPdDocument() { return pdDocument; }
+        public void setPdDocument(PDDocument pdDocument) { this.pdDocument = pdDocument; }
     }
 }
