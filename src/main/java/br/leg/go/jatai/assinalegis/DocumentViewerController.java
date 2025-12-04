@@ -206,7 +206,7 @@ public class DocumentViewerController {
                         for (JsonNode node : root.get("results")) {
                             String header = node.has("__str__") ? node.get("__str__").asText() : "";
                             String description = node.has("descricao") ? node.get("descricao").asText() : "";
-                            items.add(new DocumentItem(header, description, node.toString()));
+                            items.add(new DocumentItem(header, description, node));
                         }
                     }
                     log("Lista de documentos atualizada com " + items.size() + " itens.\n");
@@ -269,10 +269,9 @@ public class DocumentViewerController {
 
     private void handleDocumentSelection(DocumentItem item) {
         log("Item selecionado: " + item.getHeader() + "\n");
-        // convertendo o JSON de volta para exibir detalhes
-        ObjectMapper mapper = new ObjectMapper();
-        try {
-            JsonNode jsonNode = mapper.readTree(item.getJsonData());
+
+        JsonNode jsonNode = item.getJsonData();
+        if (jsonNode.has("texto_original")) {
             String textoOriginal = jsonNode.get("texto_original").asText();
 
             log("Texto Original:\n" + textoOriginal + "\n");
@@ -280,9 +279,6 @@ public class DocumentViewerController {
             if (textoOriginal != null && !textoOriginal.isEmpty()) {
                 loadPdfPreview(textoOriginal);
             }
-
-        } catch (JsonProcessingException e) {
-            log("Erro ao processar JSON: " + e.getMessage() + "\n");
         }
     }
 
@@ -399,9 +395,9 @@ public class DocumentViewerController {
     public static class DocumentItem {
         private final String header;
         private final String description;
-        private final String jsonData;
+        private final JsonNode jsonData;
 
-        public DocumentItem(String header, String description, String jsonData) {
+        public DocumentItem(String header, String description, JsonNode jsonData) {
             this.header = header;
             this.description = description;
             this.jsonData = jsonData;
@@ -409,6 +405,6 @@ public class DocumentViewerController {
 
         public String getHeader() { return header; }
         public String getDescription() { return description; }
-        public String getJsonData() { return jsonData; }
+        public JsonNode getJsonData() { return jsonData; }
     }
 }
