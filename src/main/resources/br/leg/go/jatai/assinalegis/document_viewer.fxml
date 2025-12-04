@@ -26,8 +26,12 @@
     </VBox>
     <VBox fx:id="vBoxPreviewPage" spacing="0" alignment="CENTER" prefWidth="800.0" style="-fx-background-color: #aaaaaa;">
 
-        <ScrollPane fx:id="scrollPane" VBox.vgrow="ALWAYS" fitToWidth="true" fitToHeight="true" pannable="true">
-            <StackPane fx:id="contentHolder"/>
+        <ScrollPane fx:id="scrollPane" VBox.vgrow="ALWAYS" fitToWidth="true" fitToHeight="true" pannable="true" style="-fx-background-color: #aaaaaa;">
+
+            <padding>
+                <Insets top="5" right="5" bottom="5" left="5"/>
+            </padding>
+            <StackPane fx:id="contentHolder"  style="-fx-background-color: #aaaaaa;"/>
         </ScrollPane>
         <HBox alignment="CENTER" spacing="0">
             <padding>
