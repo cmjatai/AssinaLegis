@@ -316,6 +316,10 @@ public class DocumentViewerController {
         });
 
         documentListView.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
+            if (oldValue != null) {
+                oldValue.setSavedPageIndex(currentPageIndex);
+                oldValue.setSavedRect(lastRect.get());
+            }
             if (newValue != null) {
                 handleDocumentSelection(newValue);
             }
@@ -341,12 +345,12 @@ public class DocumentViewerController {
             log("Texto Original:\n" + textoOriginal + "\n");
 
             if (textoOriginal != null && !textoOriginal.isEmpty()) {
-                loadPdfPreview(textoOriginal);
+                loadPdfPreview(textoOriginal, item.getSavedPageIndex(), item.getSavedRect());
             }
         }
     }
 
-    private void loadPdfPreview(String urlString) {
+    private void loadPdfPreview(String urlString, int initialPage, Rectangle initialRect) {
         clearPreview();
 
         new Thread(() -> {
@@ -356,15 +360,30 @@ public class DocumentViewerController {
                     currentDocument = org.apache.pdfbox.Loader.loadPDF(is.readAllBytes());
                     pdfRenderer = new PDFRenderer(currentDocument);
                     totalPages = currentDocument.getNumberOfPages();
-                    currentPageIndex = 0;
+                    currentPageIndex = initialPage;
 
                     renderCurrentPage();
+
+                    if (initialRect != null) {
+                        Platform.runLater(() -> restoreRect(initialRect));
+                    }
                 }
             } catch (Exception e) {
                 e.printStackTrace();
                 log("Erro ao carregar PDF: " + e.getMessage() + "\n");
             }
         }).start();
+    }
+
+    private void restoreRect(Rectangle rect) {
+        if (lastRect.get() != null) {
+            group.getChildren().remove(lastRect.get());
+        }
+        if (rect.getParent() != null) {
+            ((Group)rect.getParent()).getChildren().remove(rect);
+        }
+        group.getChildren().add(rect);
+        lastRect.set(rect);
     }
 
     private void renderCurrentPage() {
@@ -461,6 +480,8 @@ public class DocumentViewerController {
         private final String description;
         private final JsonNode jsonData;
         private final javafx.beans.property.BooleanProperty selected = new javafx.beans.property.SimpleBooleanProperty(false);
+        private int savedPageIndex = 0;
+        private Rectangle savedRect = null;
 
         public DocumentItem(String header, String description, JsonNode jsonData) {
             this.header = header;
@@ -475,5 +496,11 @@ public class DocumentViewerController {
         public boolean isSelected() { return selected.get(); }
         public void setSelected(boolean selected) { this.selected.set(selected); }
         public javafx.beans.property.BooleanProperty selectedProperty() { return selected; }
+
+        public int getSavedPageIndex() { return savedPageIndex; }
+        public void setSavedPageIndex(int savedPageIndex) { this.savedPageIndex = savedPageIndex; }
+
+        public Rectangle getSavedRect() { return savedRect; }
+        public void setSavedRect(Rectangle savedRect) { this.savedRect = savedRect; }
     }
 }
