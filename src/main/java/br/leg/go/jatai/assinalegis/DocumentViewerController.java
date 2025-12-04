@@ -30,6 +30,8 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -193,6 +195,7 @@ public class DocumentViewerController {
                 Map<String, Object> params = new HashMap<>();
                 params.put("o", "-data_envio,-id");
                 params.put("page_size", 100);
+                params.put("expand", "autor");
                 InputStream response = ApiService.getInstance().get("materia", "proposicao", null, null, params);
 
                 ObjectMapper mapper = new ObjectMapper();
@@ -233,14 +236,69 @@ public class DocumentViewerController {
                     setText(null);
                     setGraphic(null);
                 } else {
-                    VBox vBox = new VBox(5);
+                    VBox mainVBox = new VBox(5);
+
+                    // HBox para CheckBox e Header
+                    HBox headerHBox = new HBox(10);
+                    headerHBox.setAlignment(Pos.CENTER_LEFT);
+
+                    CheckBox checkBox = new CheckBox();
+                    checkBox.selectedProperty().bindBidirectional(item.selectedProperty());
+
+                    // Desabilita o checkbox se data_envio não for nulo
+                    JsonNode jsonData = item.getJsonData();
+                    boolean hasDataEnvio = jsonData.has("data_envio") && !jsonData.get("data_envio").isNull();
+                    checkBox.setDisable(hasDataEnvio);
 
                     Label headerLabel = new Label(item.getHeader());
                     headerLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
                     headerLabel.setWrapText(true);
 
+                    // Vincula a largura do header para evitar scroll horizontal
+                    headerLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(65));
+
+                    headerHBox.getChildren().addAll(checkBox, headerLabel);
+                    mainVBox.getChildren().add(headerHBox);
+
+                    // VBox para detalhes (Autor, Datas, Descrição)
+                    VBox detailsVBox = new VBox(2);
+                    detailsVBox.setPadding(new Insets(0, 0, 0, 0)); // Indentação para alinhar com o texto do header
+
+                    if (jsonData.has("autor") && !jsonData.get("autor").isNull()) {
+                        Label autorLabel = new Label("Autor: " + jsonData.get("autor").get("nome").asText());
+                        autorLabel.styleProperty().bind(
+                            javafx.beans.binding.Bindings.when(selectedProperty())
+                                .then("-fx-font-size: 11px; -fx-text-fill: -fx-selection-bar-text;")
+                                .otherwise("-fx-font-size: 11px; -fx-text-fill: #555555;")
+                        );
+                        detailsVBox.getChildren().add(autorLabel);
+                    }
+
+                    if (jsonData.has("data_envio") && !jsonData.get("data_envio").isNull()) {
+                        String dataEnvio = jsonData.get("data_envio").asText();
+                        Label dataEnvioLabel = new Label("Enviado em: " + formatData(dataEnvio));
+                        dataEnvioLabel.styleProperty().bind(
+                            javafx.beans.binding.Bindings.when(selectedProperty())
+                                .then("-fx-font-size: 11px; -fx-text-fill: -fx-selection-bar-text;")
+                                .otherwise("-fx-font-size: 11px; -fx-text-fill: #555555;")
+                        );
+                        detailsVBox.getChildren().add(dataEnvioLabel);
+                    }
+
+                    if (jsonData.has("data_recebimento") && !jsonData.get("data_recebimento").isNull()) {
+                        String dataRecebimento = jsonData.get("data_recebimento").asText();
+                        Label dataRecebimentoLabel = new Label("Recebido em: " + formatData(dataRecebimento));
+                        dataRecebimentoLabel.styleProperty().bind(
+                            javafx.beans.binding.Bindings.when(selectedProperty())
+                                .then("-fx-font-size: 11px; -fx-text-fill: -fx-selection-bar-text;")
+                                .otherwise("-fx-font-size: 11px; -fx-text-fill: #555555;")
+                        );
+                        detailsVBox.getChildren().add(dataRecebimentoLabel);
+                    }
+
                     Label descLabel = new Label(item.getDescription());
                     descLabel.setWrapText(true);
+                    descLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(65));
 
                     // Ajusta a cor do texto quando selecionado para garantir contraste
                     descLabel.styleProperty().bind(
@@ -249,13 +307,10 @@ public class DocumentViewerController {
                             .otherwise("-fx-text-fill: #666666;")
                     );
 
-                    // Vincula a largura dos labels à largura do ListView para evitar scroll horizontal
-                    // Subtrai um valor para compensar padding e barra de rolagem
-                    headerLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(35));
-                    descLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(35));
+                    detailsVBox.getChildren().add(descLabel);
+                    mainVBox.getChildren().add(detailsVBox);
 
-                    vBox.getChildren().addAll(headerLabel, descLabel);
-                    setGraphic(vBox);
+                    setGraphic(mainVBox);
                 }
             }
         });
@@ -265,6 +320,15 @@ public class DocumentViewerController {
                 handleDocumentSelection(newValue);
             }
         });
+    }
+
+    private String formatData(String dateStr) {
+        try {
+            ZonedDateTime zdt = ZonedDateTime.parse(dateStr);
+            return zdt.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
+        } catch (Exception e) {
+            return dateStr;
+        }
     }
 
     private void handleDocumentSelection(DocumentItem item) {
@@ -396,6 +460,7 @@ public class DocumentViewerController {
         private final String header;
         private final String description;
         private final JsonNode jsonData;
+        private final javafx.beans.property.BooleanProperty selected = new javafx.beans.property.SimpleBooleanProperty(false);
 
         public DocumentItem(String header, String description, JsonNode jsonData) {
             this.header = header;
@@ -406,5 +471,9 @@ public class DocumentViewerController {
         public String getHeader() { return header; }
         public String getDescription() { return description; }
         public JsonNode getJsonData() { return jsonData; }
+
+        public boolean isSelected() { return selected.get(); }
+        public void setSelected(boolean selected) { this.selected.set(selected); }
+        public javafx.beans.property.BooleanProperty selectedProperty() { return selected; }
     }
 }

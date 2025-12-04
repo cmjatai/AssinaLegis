@@ -12,9 +12,10 @@
 <HBox xmlns:fx="http://javafx.com/fxml/1"
       xmlns="http://javafx.com/javafx/21"
       fx:controller="br.leg.go.jatai.assinalegis.DocumentViewerController"
-      alignment="CENTER">
+      alignment="CENTER"
+      stylesheets="@styles.css">
 
-    <VBox fx:id="vBoxListProps"  spacing="0" alignment="CENTER" prefWidth="320.0" minWidth="320.0" maxWidth="320.0" HBox.hgrow="NEVER" style="-fx-background-color: #f0f0f0;">
+    <VBox fx:id="vBoxListProps" spacing="0" alignment="CENTER" prefWidth="400.0" minWidth="400.0" maxWidth="400.0" HBox.hgrow="NEVER" style="-fx-background-color: #f0f0f0;">
         <HBox alignment="CENTER_LEFT" spacing="5">
             <padding>
                 <Insets top="5" right="5" bottom="5" left="5"/>
@@ -27,7 +28,6 @@
     <VBox fx:id="vBoxPreviewPage" spacing="0" alignment="CENTER" prefWidth="800.0" style="-fx-background-color: #aaaaaa;">
 
         <ScrollPane fx:id="scrollPane" VBox.vgrow="ALWAYS" fitToWidth="true" fitToHeight="true" pannable="true" style="-fx-background-color: #aaaaaa;">
-
             <padding>
                 <Insets top="5" right="5" bottom="5" left="5"/>
             </padding>
@@ -35,7 +35,7 @@
         </ScrollPane>
         <HBox alignment="CENTER" spacing="0">
             <padding>
-                <Insets top="5" right="5" bottom="5" left="5"/>
+                <Insets top="0" right="5" bottom="5" left="5"/>
             </padding>
             <Button fx:id="btnFirstPage" text="&lt;&lt;" onAction="#onFirstPage"/>
             <Button fx:id="btnPrevPage" text="&lt;" onAction="#onPrevPage"/>
