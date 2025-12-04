@@ -24,7 +24,6 @@
             <menus>
                 <Menu text="Arquivo">
                     <items>
-                        <MenuItem text="Selecionar arquivo..." onAction="#onSelectFile"/>
                         <MenuItem text="Configurações..." onAction="#onConfig"/>
                         <SeparatorMenuItem/>
                         <MenuItem text="Sair" onAction="#onExit" fx:id="exitMenuItem"/>
@@ -41,12 +40,6 @@
 
     <center>
         <VBox alignment="TOP_CENTER" spacing="10">
-            <VBox fx:id="vBoxActions" spacing="10" alignment="TOP_CENTER" style="-fx-background-color: #dddddd;">
-                <HBox spacing="10" alignment="CENTER">
-                    <Button fx:id="selectFileButton" text="Selecionar Arquivo" onAction="#onSelectFile" prefWidth="150"/>
-                    <Button text="Assinar" onAction="#onSign" prefWidth="150"/>
-                </HBox>
-            </VBox>
             <fx:include source="document_viewer.fxml" fx:id="documentViewer" VBox.vgrow="ALWAYS"/>
         </VBox>
     </center>

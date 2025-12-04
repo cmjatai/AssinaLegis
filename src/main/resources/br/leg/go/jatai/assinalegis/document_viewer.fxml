@@ -22,6 +22,7 @@
         <HBox alignment="CENTER_LEFT" spacing="10" prefWidth="400" minWidth="400" maxWidth="400">
             <Label text="Documentos para Assinatura" maxWidth="Infinity" HBox.hgrow="ALWAYS" style="-fx-font-size: 12px; -fx-font-weight: bold;"/>
             <Button text="Atualizar" onAction="#onRefreshDocuments"/>
+            <Button text="Assinar" onAction="#onSign"/>
         </HBox>
         <HBox alignment="CENTER" spacing="0" HBox.hgrow="ALWAYS" maxWidth="Infinity">
             <padding>

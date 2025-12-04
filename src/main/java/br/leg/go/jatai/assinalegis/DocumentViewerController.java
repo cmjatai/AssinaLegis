@@ -35,6 +35,14 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
+import java.util.List;
+import java.util.Optional;
+import java.util.Enumeration;
+import java.io.File;
+import java.io.FileInputStream;
+import java.security.KeyStore;
+import javafx.stage.FileChooser;
 
 public class DocumentViewerController {
 
@@ -64,8 +72,11 @@ public class DocumentViewerController {
     private ImageView imageView;
     private Pane imageWrapper;
 
+    private ConfigService configService;
+
     @FXML
     public void initialize() {
+        configService = ConfigService.getInstance();
         initializeDocumentList();
         setupViewer();
         onRefreshDocuments();
@@ -194,8 +205,9 @@ public class DocumentViewerController {
             try {
                 Map<String, Object> params = new HashMap<>();
                 params.put("o", "-data_envio,-id");
-                params.put("page_size", 10);
-                params.put("data_envio__isnull", "False");
+                params.put("page_size", 100);
+                params.put("data_envio__isnull", "True");
+                params.put("data_recebimento__isnull", "True");
                 params.put("expand", "autor");
                 InputStream response = ApiService.getInstance().get("materia", "proposicao", null, null, params);
 
@@ -233,7 +245,7 @@ public class DocumentViewerController {
         JsonNode jsonNode = item.getJsonData();
         if (jsonNode.has("texto_original")) {
             String urlString = jsonNode.get("texto_original").asText();
-            if (urlString != null && !urlString.isEmpty()) {
+            if (urlString != "null" && urlString != null && !urlString.isEmpty()) {
                 new Thread(() -> {
                     try {
                         URL url = new URL(urlString);
@@ -542,6 +554,122 @@ public class DocumentViewerController {
         }
     }
 
+    @FXML
+    private void onSign() {
+        List<DocumentItem> selectedItems = documentListView.getItems().stream()
+                .filter(DocumentItem::isSelected)
+                .collect(Collectors.toList());
+
+        if (selectedItems.isEmpty()) {
+            log("Nenhum documento selecionado para assinatura.\n");
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("Aviso");
+            alert.setHeaderText(null);
+            alert.setContentText("Selecione pelo menos um documento para assinar.");
+            alert.showAndWait();
+            return;
+        }
+
+        // 1. Tenta pegar o certificado da configuração
+        String certPath = configService.getCertPath();
+        File certificadoFile;
+
+        if (certPath != null && !certPath.isEmpty()) {
+            certificadoFile = new File(certPath);
+            if (!certificadoFile.exists()) {
+                log("Certificado configurado não encontrado: " + certPath + "\n");
+                certificadoFile = null;
+            } else {
+                log("Usando certificado configurado: " + certificadoFile.getName() + "\n");
+            }
+        } else {
+            certificadoFile = null;
+        }
+
+        // Se não tiver certificado configurado ou válido, pede para selecionar
+        if (certificadoFile == null) {
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Selecionar Certificado Digital (.pfx)");
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Certificado PKCS#12", "*.pfx", "*.p12"));
+            certificadoFile = fileChooser.showOpenDialog(documentListView.getScene().getWindow());
+
+            if (certificadoFile == null) {
+                log("Seleção de certificado cancelada.\n");
+                return;
+            }
+        }
+
+        // 2. Solicitar Senha
+        String senha = solicitarSenha();
+        if (senha == null) {
+            log("Operação cancelada pelo usuário.\n");
+            return;
+        }
+
+        log("Iniciando processo de assinatura para " + selectedItems.size() + " documentos...\n");
+
+        final File finalCertificadoFile = certificadoFile;
+
+        new Thread(() -> {
+            try {
+                // Carregar KeyStore
+                KeyStore ks = KeyStore.getInstance("PKCS12");
+                try (FileInputStream fis = new FileInputStream(finalCertificadoFile)) {
+                    ks.load(fis, senha.toCharArray());
+                }
+
+                // Pegar o primeiro alias que tem chave
+                String alias = null;
+                Enumeration<String> aliases = ks.aliases();
+                while (aliases.hasMoreElements()) {
+                    String a = aliases.nextElement();
+                    if (ks.isKeyEntry(a)) {
+                        alias = a;
+                        break;
+                    }
+                }
+
+                if (alias == null) {
+                    throw new Exception("Nenhuma chave privada encontrada no certificado.");
+                }
+
+                // Assinar
+                AssinaturaService service = new AssinaturaService();
+                service.assinarDocumentos(selectedItems, ks, alias, senha.toCharArray());
+
+                Platform.runLater(() -> {
+                    log("Sucesso! " + selectedItems.size() + " documentos assinados.\n");
+                    Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                    alert.setTitle("Sucesso");
+                    alert.setHeaderText(null);
+                    alert.setContentText("Documentos assinados com sucesso!");
+                    alert.showAndWait();
+                });
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                Platform.runLater(() -> {
+                    log("Erro ao assinar: " + e.getMessage() + "\n");
+                    Alert alert = new Alert(Alert.AlertType.ERROR);
+                    alert.setTitle("Erro");
+                    alert.setHeaderText("Falha na assinatura");
+                    alert.setContentText(e.getMessage());
+                    alert.showAndWait();
+                });
+            }
+        }).start();
+    }
+
+    private String solicitarSenha() {
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setTitle("Senha do Certificado");
+        dialog.setHeaderText("Digite a senha do certificado digital:");
+        dialog.setContentText("Senha:");
+
+        Optional<String> result = dialog.showAndWait();
+        return result.orElse(null);
+    }
+
     public static class DocumentItem {
         private final String header;
         private final String description;
@@ -550,6 +678,7 @@ public class DocumentViewerController {
         private int savedPageIndex = 0;
         private Rectangle savedRect = null;
         private PDDocument pdDocument;
+        private PDDocument pdDocumentSigned;
 
         public DocumentItem(String header, String description, JsonNode jsonData) {
             this.header = header;
@@ -573,5 +702,8 @@ public class DocumentViewerController {
 
         public PDDocument getPdDocument() { return pdDocument; }
         public void setPdDocument(PDDocument pdDocument) { this.pdDocument = pdDocument; }
+
+        public PDDocument getPdDocumentSigned() { return pdDocumentSigned; }
+        public void setPdDocumentSigned(PDDocument pdDocumentSigned) { this.pdDocumentSigned = pdDocumentSigned; }
     }
 }
