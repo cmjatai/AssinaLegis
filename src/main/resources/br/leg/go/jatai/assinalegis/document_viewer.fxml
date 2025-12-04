@@ -19,11 +19,11 @@
         <padding>
             <Insets top="5" right="5" bottom="5" left="5"/>
         </padding>
-        <HBox alignment="CENTER_LEFT" spacing="10" maxWidth="Infinity" HBox.hgrow="ALWAYS">
+        <HBox alignment="CENTER_LEFT" spacing="10" prefWidth="400" minWidth="400" maxWidth="400">
             <Label text="Documentos para Assinatura" maxWidth="Infinity" HBox.hgrow="ALWAYS" style="-fx-font-size: 12px; -fx-font-weight: bold;"/>
             <Button text="Atualizar" onAction="#onRefreshDocuments"/>
         </HBox>
-        <HBox alignment="CENTER" spacing="0">
+        <HBox alignment="CENTER" spacing="0" HBox.hgrow="ALWAYS" maxWidth="Infinity">
             <padding>
                 <Insets top="5" right="5" bottom="5" left="5"/>
             </padding>
@@ -37,9 +37,9 @@
         </HBox>
     </HBox>
 
-    <HBox fx:id="vBoxListProps" spacing="0" alignment="CENTER" >
-        <ListView fx:id="documentListView" />
-        <ScrollPane fx:id="scrollPane" VBox.vgrow="ALWAYS" fitToWidth="true" fitToHeight="true" pannable="true" style="-fx-background-color: #aaaaaa;">
+    <HBox fx:id="vBoxListProps" spacing="0" alignment="CENTER" VBox.vgrow="ALWAYS">
+        <ListView fx:id="documentListView" prefWidth="400" minWidth="400" maxWidth="400"/>
+        <ScrollPane fx:id="scrollPane" HBox.hgrow="ALWAYS" maxWidth="Infinity" fitToWidth="true" fitToHeight="true" pannable="true" style="-fx-background-color: #aaaaaa;">
             <padding>
                 <Insets top="5" right="5" bottom="5" left="5"/>
             </padding>
