@@ -12,12 +12,21 @@ import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.image.WritableImage;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.shape.Rectangle;
+import javafx.scene.paint.Color;
+import javafx.scene.Group;
+import javafx.beans.property.DoubleProperty;
+import javafx.beans.property.SimpleDoubleProperty;
 import javafx.stage.FileChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.util.Pair;
 import javafx.embed.swing.SwingFXUtils;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -30,6 +39,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import java.awt.image.BufferedImage;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -209,18 +219,138 @@ public class MainController {
 
                     Platform.runLater(() -> {
                         vBoxPreviewPage.getChildren().clear();
+
+                        // Controles de Zoom
+                        HBox zoomControls = new HBox(10);
+                        zoomControls.setAlignment(Pos.CENTER_RIGHT);
+                        zoomControls.setPadding(new Insets(5));
+
+                        Button btnZoomIn = new Button("+");
+                        Button btnZoomOut = new Button("-");
+                        Button btnFit = new Button("Ajustar Largura");
+
+                        zoomControls.getChildren().addAll(btnZoomOut, btnFit, btnZoomIn);
+
                         ImageView imageView = new ImageView(image);
                         imageView.setPreserveRatio(true);
-                        imageView.setSmooth(true); // Importante para qualidade no redimensionamento
-                        imageView.setCache(true);  // Melhora performance
-                        imageView.fitWidthProperty().bind(vBoxPreviewPage.widthProperty().subtract(20));
+                        imageView.setSmooth(true);
+                        imageView.setCache(true);
 
-                        ScrollPane scrollPane = new ScrollPane(imageView);
-                        scrollPane.setFitToWidth(true);
+                        // Grupo para conter a imagem e o retângulo
+                        Group group = new Group(imageView);
+
+                        // Propriedade de Zoom
+                        DoubleProperty zoomProperty = new SimpleDoubleProperty(1.0);
+
+                        // Transformação de escala com pivô no canto superior esquerdo (0,0)
+                        javafx.scene.transform.Scale scaleTransform = new javafx.scene.transform.Scale();
+                        scaleTransform.xProperty().bind(zoomProperty);
+                        scaleTransform.yProperty().bind(zoomProperty);
+                        scaleTransform.setPivotX(0);
+                        scaleTransform.setPivotY(0);
+                        group.getTransforms().add(scaleTransform);
+
+                        // Wrapper para garantir que o tamanho do conteúdo reflita o zoom
+                        javafx.scene.layout.Pane imageWrapper = new javafx.scene.layout.Pane(group);
+
+                        // Bind das dimensões do wrapper ao tamanho escalado da imagem
+                        imageWrapper.minWidthProperty().bind(javafx.beans.binding.Bindings.createDoubleBinding(
+                            () -> image.getWidth() * zoomProperty.get(), zoomProperty));
+                        imageWrapper.minHeightProperty().bind(javafx.beans.binding.Bindings.createDoubleBinding(
+                            () -> image.getHeight() * zoomProperty.get(), zoomProperty));
+                        imageWrapper.maxWidthProperty().bind(imageWrapper.minWidthProperty());
+                        imageWrapper.maxHeightProperty().bind(imageWrapper.minHeightProperty());
+
+                        // Referência para o último retângulo desenhado
+                        AtomicReference<Rectangle> lastRect = new AtomicReference<>();
+
+                        // Dimensões do retângulo em pixels (200 DPI)
+                        // 6cm = (6 / 2.54) * 200 = 472.44 px
+                        // 1.5cm = (1.5 / 2.54) * 200 = 118.11 px
+                        double rectWidth = (6.0 / 2.54) * 200;
+                        double rectHeight = (1.5 / 2.54) * 200;
+
+                        // Eventos de Mouse no Group (captura cliques na imagem e no retângulo)
+                        group.setOnMouseClicked(event -> {
+                            if (event.isControlDown()) {
+                                // Zoom com Ctrl + Clique
+                                if (event.getButton() == javafx.scene.input.MouseButton.PRIMARY) {
+                                    btnZoomIn.fire();
+                                } else if (event.getButton() == javafx.scene.input.MouseButton.SECONDARY) {
+                                    btnZoomOut.fire();
+                                }
+                                event.consume();
+                            } else if (event.getButton() == javafx.scene.input.MouseButton.PRIMARY) {
+                                // Desenhar retângulo com Clique Esquerdo (sem Ctrl)
+
+                                // Remove o anterior se existir
+                                if (lastRect.get() != null) {
+                                    group.getChildren().remove(lastRect.get());
+                                }
+
+                                Rectangle rect = new Rectangle(rectWidth, rectHeight);
+                                rect.setFill(Color.rgb(0, 0, 255, 0.3)); // Azul semi-transparente
+                                rect.setStroke(Color.BLUE);
+
+                                // Posiciona o retângulo começando no clique e indo para cima
+                                // O clique define o canto inferior esquerdo
+                                rect.setX(event.getX());
+                                rect.setY(event.getY() - rectHeight);
+
+                                group.getChildren().add(rect);
+                                lastRect.set(rect);
+                                event.consume();
+                            }
+                        });
+
+                        // Ações dos botões de Zoom
+                        btnZoomIn.setOnAction(e -> zoomProperty.set(zoomProperty.get() * 1.25));
+                        btnZoomOut.setOnAction(e -> zoomProperty.set(zoomProperty.get() * 0.8));
+
+                        Runnable fitAction = () -> {
+                            double width = vBoxPreviewPage.getWidth();
+                            if (width <= 0) {
+                                // Tenta pegar do scene/window se o vbox ainda não tiver tamanho
+                                if (vBoxPreviewPage.getScene() != null && vBoxPreviewPage.getScene().getWindow() != null) {
+                                    width = vBoxPreviewPage.getScene().getWindow().getWidth() / 2;
+                                }
+                            }
+                            if (width <= 0) width = 800; // Fallback
+
+                            double fitScale = (width - 40) / image.getWidth();
+                            if (fitScale > 0) {
+                                zoomProperty.set(fitScale);
+                            }
+                        };
+
+                        btnFit.setOnAction(e -> fitAction.run());
+
+                        // StackPane para centralizar o wrapper no ScrollPane
+                        StackPane contentHolder = new StackPane(imageWrapper);
+
+                        ScrollPane scrollPane = new ScrollPane(contentHolder);
+                        scrollPane.setFitToWidth(true); // Permite que o StackPane ocupe a largura disponível
+                        scrollPane.setFitToHeight(true);
                         scrollPane.setPannable(true);
+
                         VBox.setVgrow(scrollPane, javafx.scene.layout.Priority.ALWAYS);
 
-                        vBoxPreviewPage.getChildren().add(scrollPane);
+                        vBoxPreviewPage.getChildren().addAll(zoomControls, scrollPane);
+
+                        // Ajuste inicial (Fit Width)
+                        if (vBoxPreviewPage.getWidth() > 0) {
+                            fitAction.run();
+                        } else {
+                            vBoxPreviewPage.widthProperty().addListener(new javafx.beans.value.ChangeListener<Number>() {
+                                @Override
+                                public void changed(javafx.beans.value.ObservableValue<? extends Number> obs, Number oldVal, Number newVal) {
+                                    if (newVal.doubleValue() > 0) {
+                                        Platform.runLater(fitAction);
+                                        vBoxPreviewPage.widthProperty().removeListener(this);
+                                    }
+                                }
+                            });
+                        }
                     });
                 }
             } catch (Exception e) {
@@ -233,9 +363,7 @@ public class MainController {
                 });
             }
         }).start();
-    }
-
-    public static class DocumentItem {
+    }    public static class DocumentItem {
         private final String header;
         private final String description;
         private final String jsonData;
