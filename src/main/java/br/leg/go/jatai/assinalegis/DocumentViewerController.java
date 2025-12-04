@@ -146,7 +146,28 @@ public class DocumentViewerController {
     @FXML
     private void onRefreshDocuments() {
         log("Atualizando lista de documentos...\n");
+        clearPreview();
         refreshDocumentList();
+    }
+
+    private void clearPreview() {
+        if (currentDocument != null) {
+            try {
+                currentDocument.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            currentDocument = null;
+        }
+
+        Platform.runLater(() -> {
+            if (imageView != null) imageView.setImage(null);
+            if (lastRect.get() != null && group != null) {
+                group.getChildren().remove(lastRect.get());
+                lastRect.set(null);
+            }
+            updateNavigationButtons();
+        });
     }
 
     private void refreshDocumentList() {
@@ -249,24 +270,7 @@ public class DocumentViewerController {
     }
 
     private void loadPdfPreview(String urlString) {
-        // Limpa estado anterior
-        if (currentDocument != null) {
-            try {
-                currentDocument.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            currentDocument = null;
-        }
-
-        Platform.runLater(() -> {
-            imageView.setImage(null);
-            if (lastRect.get() != null) {
-                group.getChildren().remove(lastRect.get());
-                lastRect.set(null);
-            }
-            updateNavigationButtons();
-        });
+        clearPreview();
 
         new Thread(() -> {
             try {
