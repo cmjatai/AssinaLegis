@@ -197,6 +197,7 @@ public class DocumentViewerController {
                 Map<String, Object> params = new HashMap<>();
                 params.put("o", "-data_envio,-id");
                 params.put("page_size", 10);
+                params.put("data_envio__isnull", "False");
                 params.put("expand", "autor");
                 InputStream response = ApiService.getInstance().get("materia", "proposicao", null, null, params);
 
@@ -256,92 +257,109 @@ public class DocumentViewerController {
         documentListView.setItems(items);
         documentListView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
 
-        documentListView.setCellFactory(param -> new ListCell<DocumentItem>() {
-            @Override
-            protected void updateItem(DocumentItem item, boolean empty) {
-                super.updateItem(item, empty);
+        documentListView.setCellFactory(param -> {
+            ListCell<DocumentItem> cell = new ListCell<DocumentItem>() {
+                @Override
+                protected void updateItem(DocumentItem item, boolean empty) {
+                    super.updateItem(item, empty);
 
-                if (empty || item == null) {
-                    setText(null);
-                    setGraphic(null);
-                } else {
-                    VBox mainVBox = new VBox(5);
+                    if (empty || item == null) {
+                        setText(null);
+                        setGraphic(null);
+                    } else {
+                        VBox mainVBox = new VBox(5);
 
-                    // HBox para CheckBox e Header
-                    HBox headerHBox = new HBox(10);
-                    headerHBox.setAlignment(Pos.CENTER_LEFT);
+                        // HBox para CheckBox e Header
+                        HBox headerHBox = new HBox(10);
+                        headerHBox.setAlignment(Pos.CENTER_LEFT);
 
-                    CheckBox checkBox = new CheckBox();
-                    checkBox.selectedProperty().bindBidirectional(item.selectedProperty());
+                        CheckBox checkBox = new CheckBox();
+                        checkBox.selectedProperty().bindBidirectional(item.selectedProperty());
 
-                    // Desabilita o checkbox se data_envio não for nulo
-                    JsonNode jsonData = item.getJsonData();
-                    boolean hasDataEnvio = jsonData.has("data_devolucao") && !jsonData.get("data_devolucao").isNull();
-                    checkBox.setDisable(hasDataEnvio);
+                        // Desabilita o checkbox se data_envio não for nulo
+                        JsonNode jsonData = item.getJsonData();
+                        boolean hasDataEnvio = jsonData.has("data_devolucao") && !jsonData.get("data_devolucao").isNull();
+                        checkBox.setDisable(hasDataEnvio);
 
-                    Label headerLabel = new Label(item.getHeader());
-                    headerLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
-                    headerLabel.setWrapText(true);
+                        Label headerLabel = new Label(item.getHeader());
+                        headerLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
+                        headerLabel.setWrapText(true);
 
-                    // Vincula a largura do header para evitar scroll horizontal
-                    headerLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(65));
+                        // Vincula a largura do header para evitar scroll horizontal
+                        headerLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(65));
 
-                    headerHBox.getChildren().addAll(checkBox, headerLabel);
-                    mainVBox.getChildren().add(headerHBox);
+                        headerHBox.getChildren().addAll(checkBox, headerLabel);
+                        mainVBox.getChildren().add(headerHBox);
 
-                    // VBox para detalhes (Autor, Datas, Descrição)
-                    VBox detailsVBox = new VBox(2);
-                    detailsVBox.setPadding(new Insets(0, 0, 0, 0)); // Indentação para alinhar com o texto do header
+                        // VBox para detalhes (Autor, Datas, Descrição)
+                        VBox detailsVBox = new VBox(2);
+                        detailsVBox.setPadding(new Insets(0, 0, 0, 0)); // Indentação para alinhar com o texto do header
 
-                    if (jsonData.has("autor") && !jsonData.get("autor").isNull()) {
-                        Label autorLabel = new Label("Autor: " + jsonData.get("autor").get("nome").asText());
-                        autorLabel.styleProperty().bind(
+                        if (jsonData.has("autor") && !jsonData.get("autor").isNull() && jsonData.get("autor").has("nome")) {
+                            Label autorLabel = new Label("Autor: " + jsonData.get("autor").get("nome").asText());
+                            autorLabel.styleProperty().bind(
+                                javafx.beans.binding.Bindings.when(selectedProperty())
+                                    .then("-fx-font-size: 11px; -fx-text-fill: -fx-selection-bar-text;")
+                                    .otherwise("-fx-font-size: 11px; -fx-text-fill: #555555;")
+                            );
+                            detailsVBox.getChildren().add(autorLabel);
+                        }
+
+                        if (jsonData.has("data_envio") && !jsonData.get("data_envio").isNull()) {
+                            String dataEnvio = jsonData.get("data_envio").asText();
+                            Label dataEnvioLabel = new Label("Enviado em: " + formatData(dataEnvio));
+                            dataEnvioLabel.styleProperty().bind(
+                                javafx.beans.binding.Bindings.when(selectedProperty())
+                                    .then("-fx-font-size: 11px; -fx-text-fill: -fx-selection-bar-text;")
+                                    .otherwise("-fx-font-size: 11px; -fx-text-fill: #555555;")
+                            );
+                            detailsVBox.getChildren().add(dataEnvioLabel);
+                        }
+
+                        if (jsonData.has("data_recebimento") && !jsonData.get("data_recebimento").isNull()) {
+                            String dataRecebimento = jsonData.get("data_recebimento").asText();
+                            Label dataRecebimentoLabel = new Label("Recebido em: " + formatData(dataRecebimento));
+                            dataRecebimentoLabel.styleProperty().bind(
+                                javafx.beans.binding.Bindings.when(selectedProperty())
+                                    .then("-fx-font-size: 11px; -fx-text-fill: -fx-selection-bar-text;")
+                                    .otherwise("-fx-font-size: 11px; -fx-text-fill: #555555;")
+                            );
+                            detailsVBox.getChildren().add(dataRecebimentoLabel);
+                        }
+
+                        Label descLabel = new Label(item.getDescription());
+                        descLabel.setWrapText(true);
+                        descLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(65));
+
+                        // Ajusta a cor do texto quando selecionado para garantir contraste
+                        descLabel.styleProperty().bind(
                             javafx.beans.binding.Bindings.when(selectedProperty())
-                                .then("-fx-font-size: 11px; -fx-text-fill: -fx-selection-bar-text;")
-                                .otherwise("-fx-font-size: 11px; -fx-text-fill: #555555;")
+                                .then("-fx-text-fill: -fx-selection-bar-text;")
+                                .otherwise("-fx-text-fill: #666666;")
                         );
-                        detailsVBox.getChildren().add(autorLabel);
+
+                        detailsVBox.getChildren().add(descLabel);
+                        mainVBox.getChildren().add(detailsVBox);
+
+                        setGraphic(mainVBox);
                     }
-
-                    if (jsonData.has("data_envio") && !jsonData.get("data_envio").isNull()) {
-                        String dataEnvio = jsonData.get("data_envio").asText();
-                        Label dataEnvioLabel = new Label("Enviado em: " + formatData(dataEnvio));
-                        dataEnvioLabel.styleProperty().bind(
-                            javafx.beans.binding.Bindings.when(selectedProperty())
-                                .then("-fx-font-size: 11px; -fx-text-fill: -fx-selection-bar-text;")
-                                .otherwise("-fx-font-size: 11px; -fx-text-fill: #555555;")
-                        );
-                        detailsVBox.getChildren().add(dataEnvioLabel);
-                    }
-
-                    if (jsonData.has("data_recebimento") && !jsonData.get("data_recebimento").isNull()) {
-                        String dataRecebimento = jsonData.get("data_recebimento").asText();
-                        Label dataRecebimentoLabel = new Label("Recebido em: " + formatData(dataRecebimento));
-                        dataRecebimentoLabel.styleProperty().bind(
-                            javafx.beans.binding.Bindings.when(selectedProperty())
-                                .then("-fx-font-size: 11px; -fx-text-fill: -fx-selection-bar-text;")
-                                .otherwise("-fx-font-size: 11px; -fx-text-fill: #555555;")
-                        );
-                        detailsVBox.getChildren().add(dataRecebimentoLabel);
-                    }
-
-                    Label descLabel = new Label(item.getDescription());
-                    descLabel.setWrapText(true);
-                    descLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(65));
-
-                    // Ajusta a cor do texto quando selecionado para garantir contraste
-                    descLabel.styleProperty().bind(
-                        javafx.beans.binding.Bindings.when(selectedProperty())
-                            .then("-fx-text-fill: -fx-selection-bar-text;")
-                            .otherwise("-fx-text-fill: #666666;")
-                    );
-
-                    detailsVBox.getChildren().add(descLabel);
-                    mainVBox.getChildren().add(detailsVBox);
-
-                    setGraphic(mainVBox);
                 }
-            }
+            };
+
+            cell.setOnMouseClicked(event -> {
+                if (event.getButton() == javafx.scene.input.MouseButton.PRIMARY && event.getClickCount() == 2 && !cell.isEmpty()) {
+                    DocumentItem item = cell.getItem();
+                    if (item != null) {
+                        JsonNode jsonData = item.getJsonData();
+                        boolean isDisabled = jsonData.has("data_devolucao") && !jsonData.get("data_devolucao").isNull();
+                        if (!isDisabled) {
+                            item.setSelected(!item.isSelected());
+                        }
+                    }
+                }
+            });
+
+            return cell;
         });
 
         documentListView.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
