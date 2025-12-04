@@ -50,81 +50,85 @@ public class AssinaturaService {
         }
 
         for (DocumentItem item : itens) {
-            PDDocument doc = item.getPdDocument();
-            if (doc == null) {
-                continue; // Pula se não tiver documento carregado
+            byte[] originalBytes = item.getOriginalBytes();
+            if (originalBytes == null) {
+                // Fallback se não tiver bytes originais (ex: carregado via loadPdfPreview sem salvar no item)
+                // Mas idealmente preloadPdf deve garantir isso.
+                // Se não tiver, tentamos usar o PDDocument existente, mas isso pode quebrar assinaturas anteriores.
+                PDDocument doc = item.getPdDocument();
+                if (doc != null) {
+                    try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                        doc.save(baos);
+                        originalBytes = baos.toByteArray();
+                    }
+                } else {
+                    continue;
+                }
             }
 
-            // Clonar ou usar o mesmo documento? O ideal é não modificar o original se quisermos manter o preview original
-            // Mas PDDocument é difícil de clonar. Vamos salvar o original em memória e recarregar para assinar.
+            try (PDDocument docToSign = Loader.loadPDF(originalBytes);
+                 ByteArrayOutputStream baosSigned = new ByteArrayOutputStream()) {
 
-            try (ByteArrayOutputStream baosOriginal = new ByteArrayOutputStream()) {
-                doc.save(baosOriginal);
+                // 3. Cria a estrutura da assinatura no PDF
+                PDSignature signature = new PDSignature();
+                signature.setFilter(PDSignature.FILTER_ADOBE_PPKLITE);
+                signature.setSubFilter(PDSignature.SUBFILTER_ADBE_PKCS7_DETACHED);
+                signature.setName("AssinaLegis");
+                signature.setLocation("Jataí - GO");
+                signature.setReason("Assinatura Digital ICP-Brasil");
+                signature.setSignDate(Calendar.getInstance());
 
-                try (PDDocument docToSign = Loader.loadPDF(baosOriginal.toByteArray());
-                     ByteArrayOutputStream baosSigned = new ByteArrayOutputStream()) {
+                // 4. Registra a interface de assinatura que fará o trabalho criptográfico
+                docToSign.addSignature(signature, new SignatureInterface() {
+                    @Override
+                    public byte[] sign(InputStream content) throws IOException {
+                        try {
+                            // Lê o conteúdo do PDF que precisa ser assinado
+                            byte[] contentBytes = content.readAllBytes();
 
-                    // 3. Cria a estrutura da assinatura no PDF
-                    PDSignature signature = new PDSignature();
-                    signature.setFilter(PDSignature.FILTER_ADOBE_PPKLITE);
-                    signature.setSubFilter(PDSignature.SUBFILTER_ADBE_PKCS7_DETACHED);
-                    signature.setName("AssinaLegis");
-                    signature.setLocation("Jataí - GO");
-                    signature.setReason("Assinatura Digital ICP-Brasil");
-                    signature.setSignDate(Calendar.getInstance());
-
-                    // 4. Registra a interface de assinatura que fará o trabalho criptográfico
-                    docToSign.addSignature(signature, new SignatureInterface() {
-                        @Override
-                        public byte[] sign(InputStream content) throws IOException {
-                            try {
-                                // Lê o conteúdo do PDF que precisa ser assinado
-                                byte[] contentBytes = content.readAllBytes();
-
-                                // Prepara a cadeia de certificados para o Bouncy Castle
-                                List<Certificate> certList = new ArrayList<>();
-                                for (Certificate cert : certificateChain) {
-                                    certList.add(cert);
-                                }
-                                JcaCertStore certs = new JcaCertStore(certList);
-
-                                // Configura o gerador de assinatura CMS (PKCS#7)
-                                CMSSignedDataGenerator gen = new CMSSignedDataGenerator();
-
-                                // Define o algoritmo de assinatura (SHA256 com RSA é padrão ICP-Brasil)
-                                ContentSigner sha256Signer = new JcaContentSignerBuilder("SHA256withRSA").build(privateKey);
-
-                                gen.addSignerInfoGenerator(new JcaSignerInfoGeneratorBuilder(
-                                        new JcaDigestCalculatorProviderBuilder().build())
-                                        .build(sha256Signer, (X509Certificate) certificateChain[0]));
-
-                                gen.addCertificates(certs);
-
-                                // Gera a assinatura
-                                CMSTypedData msg = new CMSProcessableByteArray(contentBytes);
-                                // false = detached signature (o PDF contém o conteúdo, a assinatura fica separada na estrutura)
-                                CMSSignedData signedData = gen.generate(msg, false);
-
-                                return signedData.getEncoded();
-                            } catch (Exception e) {
-                                throw new IOException("Erro ao gerar assinatura criptográfica", e);
+                            // Prepara a cadeia de certificados para o Bouncy Castle
+                            List<Certificate> certList = new ArrayList<>();
+                            for (Certificate cert : certificateChain) {
+                                certList.add(cert);
                             }
+                            JcaCertStore certs = new JcaCertStore(certList);
+
+                            // Configura o gerador de assinatura CMS (PKCS#7)
+                            CMSSignedDataGenerator gen = new CMSSignedDataGenerator();
+
+                            // Define o algoritmo de assinatura (SHA256 com RSA é padrão ICP-Brasil)
+                            ContentSigner sha256Signer = new JcaContentSignerBuilder("SHA256withRSA").build(privateKey);
+
+                            gen.addSignerInfoGenerator(new JcaSignerInfoGeneratorBuilder(
+                                    new JcaDigestCalculatorProviderBuilder().build())
+                                    .build(sha256Signer, (X509Certificate) certificateChain[0]));
+
+                            gen.addCertificates(certs);
+
+                            // Gera a assinatura
+                            CMSTypedData msg = new CMSProcessableByteArray(contentBytes);
+                            // false = detached signature (o PDF contém o conteúdo, a assinatura fica separada na estrutura)
+                            CMSSignedData signedData = gen.generate(msg, false);
+
+                            return signedData.getEncoded();
+                        } catch (Exception e) {
+                            throw new IOException("Erro ao gerar assinatura criptográfica", e);
                         }
-                    });
-
-                    // 5. Salva o documento assinado (Incremental save é obrigatório para assinaturas)
-                    docToSign.saveIncremental(baosSigned);
-
-                    // 6. Carrega o documento assinado e salva no item
-                    PDDocument signedDoc = Loader.loadPDF(baosSigned.toByteArray());
-                    item.setPdDocumentSigned(signedDoc);
-
-                    // 7. Opcional: Salva o documento assinado em arquivo para verificação
-                    String userHome = System.getProperty("user.home");
-                    String nomeArquivo = userHome + File.separator + "documento_assinado_" + item.getJsonData().get("id") + ".pdf";
-                    try (FileOutputStream fos = new FileOutputStream(new File(nomeArquivo))) {
-                        fos.write(baosSigned.toByteArray());
                     }
+                });
+
+                // 5. Salva o documento assinado (Incremental save é obrigatório para assinaturas)
+                docToSign.saveIncremental(baosSigned);
+
+                // 6. Carrega o documento assinado e salva no item
+                PDDocument signedDoc = Loader.loadPDF(baosSigned.toByteArray());
+                item.setPdDocumentSigned(signedDoc);
+
+                // 7. Opcional: Salva o documento assinado em arquivo para verificação
+                String userHome = System.getProperty("user.home");
+                String nomeArquivo = userHome + File.separator + "documento_assinado_" + item.getJsonData().get("id") + ".pdf";
+                try (FileOutputStream fos = new FileOutputStream(new File(nomeArquivo))) {
+                    fos.write(baosSigned.toByteArray());
                 }
             }
         }

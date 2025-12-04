@@ -264,7 +264,9 @@ public class DocumentViewerController {
                 new Thread(() -> {
                     try {
                         try (InputStream is = getInputStreamFromUrl(urlString)) {
-                            PDDocument doc = org.apache.pdfbox.Loader.loadPDF(is.readAllBytes());
+                            byte[] bytes = is.readAllBytes();
+                            item.setOriginalBytes(bytes);
+                            PDDocument doc = org.apache.pdfbox.Loader.loadPDF(bytes);
                             item.setPdDocument(doc);
                         }
                     } catch (Exception e) {
@@ -448,7 +450,8 @@ public class DocumentViewerController {
         new Thread(() -> {
             try {
                 try (InputStream is = getInputStreamFromUrl(urlString)) {
-                    currentDocument = org.apache.pdfbox.Loader.loadPDF(is.readAllBytes());
+                    byte[] bytes = is.readAllBytes();
+                    currentDocument = org.apache.pdfbox.Loader.loadPDF(bytes);
                     currentDocumentIsOwnedByItem = false;
                     pdfRenderer = new PDFRenderer(currentDocument);
                     totalPages = currentDocument.getNumberOfPages();
@@ -692,6 +695,7 @@ public class DocumentViewerController {
         private Rectangle savedRect = null;
         private PDDocument pdDocument;
         private PDDocument pdDocumentSigned;
+        private byte[] originalBytes;
 
         public DocumentItem(String header, String description, JsonNode jsonData) {
             this.header = header;
@@ -718,5 +722,8 @@ public class DocumentViewerController {
 
         public PDDocument getPdDocumentSigned() { return pdDocumentSigned; }
         public void setPdDocumentSigned(PDDocument pdDocumentSigned) { this.pdDocumentSigned = pdDocumentSigned; }
+
+        public byte[] getOriginalBytes() { return originalBytes; }
+        public void setOriginalBytes(byte[] originalBytes) { this.originalBytes = originalBytes; }
     }
 }
