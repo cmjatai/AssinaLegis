@@ -17,6 +17,7 @@ public class ConfigService {
     private static final String KEY_URL = "url";
     public static final String KEY_TOKEN = "token";
     private static final String KEY_CERT_PATH = "cert_path";
+    private static final String KEY_CERT_PASSWORD = "cert_password";
     public static final String KEY_CASA = "casalegislativa";
 
     private static ConfigService instance;
@@ -101,6 +102,14 @@ public class ConfigService {
 
     public void setCertPath(String certPath) {
         prefs.put(KEY_CERT_PATH, certPath);
+    }
+
+    public String getCertPassword() {
+        return prefs.get(KEY_CERT_PASSWORD, "");
+    }
+
+    public void setCertPassword(String password) {
+        prefs.put(KEY_CERT_PASSWORD, password != null ? password : "");
     }
 
     public <T> T getCasaLegislativa(Class<T> type) {

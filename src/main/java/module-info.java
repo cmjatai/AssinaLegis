@@ -6,6 +6,7 @@ module br.leg.go.jatai.assinalegis {
     requires javafx.swing;
     requires java.desktop;
     requires org.apache.pdfbox;
+    requires org.apache.pdfbox.io;
     requires org.bouncycastle.provider;
     requires org.bouncycastle.pkix;
     requires java.prefs;

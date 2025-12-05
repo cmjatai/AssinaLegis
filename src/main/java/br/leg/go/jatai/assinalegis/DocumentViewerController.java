@@ -631,11 +631,17 @@ public class DocumentViewerController {
         }
 
         // 2. Solicitar Senha
-        String senha = solicitarSenha();
-        if (senha == null) {
+        String senhaTemp = configService.getCertPassword();
+        if (senhaTemp == null || senhaTemp.isEmpty()) {
+            senhaTemp = solicitarSenha();
+        }
+
+        if (senhaTemp == null) {
             log("Operação cancelada pelo usuário.\n");
             return;
         }
+
+        final String senha = senhaTemp;
 
         log("Iniciando processo de assinatura para " + selectedItems.size() + " documentos...\n");
 
@@ -692,10 +698,29 @@ public class DocumentViewerController {
     }
 
     private String solicitarSenha() {
-        TextInputDialog dialog = new TextInputDialog();
+        Dialog<String> dialog = new Dialog<>();
         dialog.setTitle("Senha do Certificado");
         dialog.setHeaderText("Digite a senha do certificado digital:");
-        dialog.setContentText("Senha:");
+
+        ButtonType okButtonType = new ButtonType("OK", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(okButtonType, ButtonType.CANCEL);
+
+        PasswordField passwordField = new PasswordField();
+        passwordField.setPromptText("Senha");
+
+        VBox content = new VBox(10);
+        content.getChildren().addAll(new Label("Senha:"), passwordField);
+
+        dialog.getDialogPane().setContent(content);
+
+        Platform.runLater(passwordField::requestFocus);
+
+        dialog.setResultConverter(dialogButton -> {
+            if (dialogButton == okButtonType) {
+                return passwordField.getText();
+            }
+            return null;
+        });
 
         Optional<String> result = dialog.showAndWait();
         return result.orElse(null);

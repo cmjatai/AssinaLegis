@@ -1,6 +1,7 @@
 package br.leg.go.jatai.assinalegis;
 
 import javafx.fxml.FXML;
+import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
@@ -17,6 +18,9 @@ public class ConfigController {
 
     @FXML
     private TextField certPathField;
+
+    @FXML
+    private PasswordField certPasswordField;
 
     private ConfigService configService;
     private Stage dialogStage;
@@ -35,6 +39,7 @@ public class ConfigController {
         urlField.setText(configService.getUrl());
         tokenField.setText(configService.getToken());
         certPathField.setText(configService.getCertPath());
+        certPasswordField.setText(configService.getCertPassword());
     }
 
     @FXML
@@ -63,6 +68,7 @@ public class ConfigController {
         configService.setUrl(urlField.getText());
         configService.setToken(tokenField.getText());
         configService.setCertPath(certPathField.getText());
+        configService.setCertPassword(certPasswordField.getText());
 
         dialogStage.close();
     }
