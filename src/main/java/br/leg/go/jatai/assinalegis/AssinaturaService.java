@@ -111,43 +111,43 @@ public class AssinaturaService {
 
                 // Determina página e posição (REGRA_A)
                 int pageIndex = 0;
-                float x = 20; // Margem esquerda padrão
-                float y = 20; // Margem inferior padrão
+                if (item.getSavedRect() != null) {
+                    pageIndex = item.getSavedPageIndex();
+                }
+
+                // Validação do índice da página
+                if (pageIndex < 0) pageIndex = 0;
+                if (pageIndex >= docToSign.getNumberOfPages()) pageIndex = docToSign.getNumberOfPages() - 1;
+
+                PDPage page = docToSign.getPage(pageIndex);
+                PDRectangle mediaBox = page.getMediaBox();
+
                 float width = (float) (5.0 / 2.54 * 72); // 5cm em pontos
                 float height = (float) (1.5 / 2.54 * 72); // 1.5cm em pontos
+                float x = 20;
+                float y;
 
                 if (item.getSavedRect() != null) {
                     // REGRA_A_COM_CONTEUDO
-                    pageIndex = item.getSavedPageIndex();
                     Rectangle rect = item.getSavedRect();
 
-                    // Converte coordenadas do JavaFX (origem top-left) para PDF (origem bottom-left)
-                    // O rect do JavaFX é relativo ao Group que tem scale.
-                    // Precisamos considerar que o PDFBox usa 72 DPI por padrão e o viewer usa 200 DPI (definido em DocumentViewerController)
-
+                    // Converte coordenadas do JavaFX (origem top-left) para PDF
+                    // Precisamos considerar que o PDFBox usa 72 DPI por padrão e o viewer usa 200 DPI
                     double scaleFactor = 72.0 / 200.0;
 
                     x = (float) (rect.getX() * scaleFactor);
-                    // A coordenada Y precisa ser invertida pois PDF é bottom-up e JavaFX é top-down
-                    // Mas aqui estamos pegando a posição relativa. O PDFBox Visible Signature Designer
-                    // geralmente pede coordenadas x, y, width, height.
-                    // Vamos simplificar assumindo que o rect.getY() vem do topo da página visualizada.
-                    // Precisamos da altura da página PDF para inverter.
-                    PDPage page = docToSign.getPage(pageIndex);
-                    PDRectangle mediaBox = page.getMediaBox();
-
-                    // Ajuste da coordenada Y:
-                    // No JavaFX, Y cresce para baixo. No PDF, Y cresce para cima.
-                    // rect.getY() é a distância do topo.
-                    // Então Y no PDF = AlturaPagina - (rect.getY() * scaleFactor) - (rect.getHeight() * scaleFactor)
-                    y = (float) (mediaBox.getHeight() - (rect.getY() * scaleFactor) - (rect.getHeight() * scaleFactor));
-
                     width = (float) (rect.getWidth() * scaleFactor);
                     height = (float) (rect.getHeight() * scaleFactor);
+
+                    // Ajuste da coordenada Y:
+                    // O comportamento observado (y=20 aparecendo no topo) indica que o PDVisibleSignDesigner
+                    // nesta versão/configuração está usando origem Top-Left.
+                    y = (float) (rect.getY() * scaleFactor);
                 } else {
                     // REGRA_A_SEM_CONTEUDO
-                    // Canto inferior esquerdo da primeira página
-                    // x e y já definidos como 20
+                    // Canto inferior esquerdo da página
+                    // Se origem é Top-Left: y = mediaBox.getHeight() - 20 - height
+                    y = (float) (mediaBox.getHeight() - 20 - height);
                 }
 
                 // Cria a imagem da assinatura (REGRA_B)
