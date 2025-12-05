@@ -38,6 +38,7 @@ import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder;
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.geom.AffineTransform;
+import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.security.KeyStore;
@@ -285,15 +286,26 @@ public class AssinaturaService {
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2d = image.createGraphics();
 
+        String fontName = "Liberation Sans Narrow";
         // Configurações de renderização
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
-        // Fundo azul (0, 115, 183)
-        g2d.setColor(new Color(0, 115, 183));
-        g2d.fillRect(0, 0, width, height);
-        drawRotatedGradient(g2d, new java.awt.Rectangle(0, 0, width, height),
-        60, 100);
+        // Fundo azul (0, 115, 183) com bordas arredondadas
+        g2d.setColor(new Color(0, 100, 170));
+        int arc = 40;
+        java.awt.geom.RoundRectangle2D roundedRect = new java.awt.geom.RoundRectangle2D.Float(0, 0, width, height, arc, arc);
+        g2d.fill(roundedRect);
+
+        // Aplica o clip para que o gradiente respeite as bordas arredondadas
+        Shape oldClip = g2d.getClip();
+        g2d.setClip(roundedRect);
+
+        drawRotatedGradient(g2d, new java.awt.Rectangle(0, 0, width, height), -210, 80);
+        drawRotatedGradient(g2d, new java.awt.Rectangle(0, (int)(height*0.7), width, (int)(height*0.7)), 30, 80);
+
+        // Restaura o clip original
+        g2d.setClip(oldClip);
 
         // Ícone alinhado à direita
         BufferedImage icon = null;
@@ -318,23 +330,25 @@ public class AssinaturaService {
         if (casa != null && casa.has("nome")) {
             nomeCasa = casa.get("nome").asText();
         }
-        // Calcula tamanho da fonte para não ultrapassar 60% da largura
-        int maxTextWidth = (int) (width * 0.6);
+        // Calcula tamanho da fonte para não ultrapassar 65% da largura
+        int maxTextWidth = (int) (width * 0.65);
         int fontSize = height / 3; // Começa com um tamanho razoável
-        Font font = new Font("SansSerif", Font.BOLD, fontSize);
+        Font font = new Font(fontName, Font.BOLD, fontSize);
+        g2d.setColor(new Color(220,220,220,255));
         g2d.setFont(font);
         FontMetrics fm = g2d.getFontMetrics();
 
         while (fm.stringWidth(nomeCasa) > maxTextWidth && fontSize > 5) {
             fontSize--;
-            font = new Font("SansSerif", Font.BOLD, fontSize);
+            font = new Font(fontName, Font.BOLD, fontSize);
             g2d.setFont(font);
             fm = g2d.getFontMetrics();
         }
         // Desenha o nome da casa (Canto Superior Direito da área de texto)
         int xNomeCasa = (int) (width) - fm.stringWidth(nomeCasa) - 10;
-        g2d.drawString(nomeCasa, xNomeCasa, fm.getAscent() + 5);
+        g2d.drawString(nomeCasa, xNomeCasa, fm.getAscent());
 
+        g2d.setColor(Color.WHITE);
         // Nome do Assinante (Centralizado na Vertical, Alinhado à Esquerda)
         if (nomeAssinante == null) nomeAssinante = "";
         if (nomeAssinante.contains(":")) {
@@ -345,19 +359,18 @@ public class AssinaturaService {
         // Calcula tamanho da fonte para não ultrapassar 70% da largura
         maxTextWidth = (int) (width * 0.7);
         fontSize = height / 3; // Começa com um tamanho razoável
-        font = new Font("SansSerif", Font.BOLD, fontSize);
+        font = new Font(fontName, Font.BOLD, fontSize);
         g2d.setFont(font);
         fm = g2d.getFontMetrics();
 
         while (fm.stringWidth(nomeAssinante) > maxTextWidth && fontSize > 5) {
             fontSize--;
-            font = new Font("SansSerif", Font.BOLD, fontSize);
+            font = new Font(fontName, Font.BOLD, fontSize);
             g2d.setFont(font);
             fm = g2d.getFontMetrics();
         }
-
         // Centralizado na vertical
-        int yText = (height - fm.getHeight()) / 2 + fm.getAscent();
+        int yText = (int)(height / 2 - fm.getHeight()*1.3) + fm.getAscent();
         g2d.drawString(nomeAssinante, 10, yText);
 
         // Data e Hora (Canto Inferior Esquerdo)
@@ -366,13 +379,32 @@ public class AssinaturaService {
         // Vamos usar a mesma lógica de tamanho relativo (90% do nome)
         String dataHora = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm"));
         int dateFontSize = (int) (fontSize * 0.9);
-        Font dateFont = new Font("SansSerif", Font.PLAIN, dateFontSize);
+        Font dateFont = new Font(fontName, Font.BOLD, dateFontSize);
+        g2d.setColor(Color.YELLOW);
         g2d.setFont(dateFont);
         FontMetrics dateFm = g2d.getFontMetrics();
 
         // Posiciona no rodapé com margem
-        g2d.drawString(dataHora, 10, height - dateFm.getDescent() - 5);
+        yText = (int)(height + dateFm.getHeight()) / 2;
+        g2d.drawString(dataHora, 40, yText);
 
+        font = new Font(fontName, Font.BOLD, 20);
+        g2d.setFont(font);
+        fm = g2d.getFontMetrics();
+        String data = "ASSINATURA QUALIFICADA ICP-BRASIL";
+        int wfm = fm.stringWidth(data);
+        int hfm = fm.getHeight();
+        g2d.setColor(new Color(255, 255, 150, 255));
+        g2d.drawString(data, 20, (int)(height*0.68)+hfm);
+
+        font = new Font(fontName, Font.BOLD, 20);
+        g2d.setFont(font);
+        fm = g2d.getFontMetrics();
+        data = "Validação disponível em: https://validar.iti.gov.br";
+        wfm = fm.stringWidth(data);
+        hfm = fm.getHeight();
+        g2d.setColor(new Color(255, 255, 255, 200));
+        g2d.drawString(data, 20, (int)(height-hfm/2.4));
 
 
         // Fallback para o ícone padrão se não conseguiu carregar o logotipo
@@ -388,7 +420,7 @@ public class AssinaturaService {
 
         if (icon != null) {
             // Define a área máxima para o ícone (30% da largura e 85% da altura)
-            double maxIconWidth = width * 0.28; // 28% para deixar uma pequena margem
+            double maxIconWidth = width * 0.27; // 27% para deixar uma pequena margem
             double maxIconHeight = height * 0.85;
 
             double scaleWidth = maxIconWidth / icon.getWidth();
@@ -401,11 +433,11 @@ public class AssinaturaService {
             int iconHeight = (int) (icon.getHeight() * scale);
 
             // Centralizado na vertical
-            int yPos = (height - iconHeight) - 3 ;
+            int yPos = (height - iconHeight) - 10;
 
             // Centralizado horizontalmente na área dos 30% à direita
-            int areaWidth = (int) (width * 0.30);
-            int areaStart = (int) (width - areaWidth - 3);
+            int areaWidth = (int) (width * 0.3);
+            int areaStart = (int) (width - areaWidth - 10); // margem direita de 10 pixels
             int xPos = areaStart + (areaWidth - iconWidth);
 
             g2d.drawImage(icon, xPos, yPos, iconWidth, iconHeight, null);
@@ -420,26 +452,53 @@ public class AssinaturaService {
             return;
         }
 
-        AffineTransform originalTransform = g2d.getTransform();
+        // Calcula o centro do retângulo
+        double cx = rect.getCenterX();
+        double cy = rect.getCenterY();
 
-        // Rotaciona o Graphics2D em torno do centro do retângulo
-        g2d.rotate(Math.toRadians(rotationDegrees), rect.getCenterX(), rect.getCenterY());
+        // Converte o ângulo para radianos e calcula seno/cosseno
+        double rad = Math.toRadians(rotationDegrees);
+        double cos = Math.cos(rad);
+        double sin = Math.sin(rad);
+
+        // Encontra os pontos extremos projetados no vetor do gradiente
+        double minProj = Double.MAX_VALUE;
+        double maxProj = -Double.MAX_VALUE;
+
+        // Coordenadas dos 4 cantos
+        double[][] corners = {
+            {rect.getMinX(), rect.getMinY()},
+            {rect.getMaxX(), rect.getMinY()},
+            {rect.getMaxX(), rect.getMaxY()},
+            {rect.getMinX(), rect.getMaxY()}
+        };
+
+        for (double[] corner : corners) {
+            // Vetor do centro até o canto
+            double dx = corner[0] - cx;
+            double dy = corner[1] - cy;
+
+            // Projeção escalar no vetor de direção do gradiente
+            double proj = dx * cos + dy * sin;
+
+            if (proj < minProj) minProj = proj;
+            if (proj > maxProj) maxProj = proj;
+        }
+
+        // Calcula os pontos inicial e final do gradiente baseados nas projeções extremas
+        float x1 = (float) (cx + minProj * cos);
+        float y1 = (float) (cy + minProj * sin);
+        float x2 = (float) (cx + maxProj * cos);
+        float y2 = (float) (cy + maxProj * sin);
 
         // Cria o gradiente: Branco transparente (0) -> Branco com transparência definida (maxAlpha)
         Color startColor = new Color(255, 255, 255, 0);
         Color endColor = new Color(255, 255, 255, maxAlpha);
 
-        // Gradiente horizontal (esquerda para direita) dentro do retângulo rotacionado
-        GradientPaint gradient = new GradientPaint(
-                (float) rect.getX(), (float) rect.getY(), startColor,
-                (float) (rect.getX() + rect.getWidth()), (float) rect.getY(), endColor
-        );
+        GradientPaint gradient = new GradientPaint(x1, y1, startColor, x2, y2, endColor);
 
         g2d.setPaint(gradient);
         g2d.fill(rect);
-
-        // Restaura a transformação original
-        g2d.setTransform(originalTransform);
     }
 
     private byte[] imageToBytes(BufferedImage image) throws IOException {

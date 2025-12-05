@@ -126,7 +126,7 @@ public class DocumentViewerController {
 
         // Dimensões do retângulo em pixels (200 DPI)
         double rectWidth = (6.0 / 2.54) * 200;
-        double rectHeight = (1.5 / 2.54) * 200;
+        double rectHeight = (1.7 / 2.54) * 200;
 
         // Eventos de Mouse no Group
         group.setOnMouseClicked(event -> {
