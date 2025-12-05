@@ -86,6 +86,10 @@ public class MainController {
             Stage stage = (Stage) statusLabel.getScene().getWindow();
             if (stage != null) {
                 stage.setMaximized(true);
+                stage.setOnCloseRequest(event -> {
+                    Platform.exit();
+                    System.exit(0);
+                });
             }
         });
     }
