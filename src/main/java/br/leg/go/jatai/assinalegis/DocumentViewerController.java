@@ -54,6 +54,7 @@ public class DocumentViewerController {
     @FXML private Button btnPrevPage;
     @FXML private Button btnZoomOut;
     @FXML private Button btnFitWidth;
+    @FXML private Button btnFitHeight;
     @FXML private Button btnZoomIn;
     @FXML private Button btnNextPage;
     @FXML private Button btnLastPage;
@@ -494,7 +495,7 @@ public class DocumentViewerController {
 
                 // Se for a primeira carga (ou se o usuário quiser), ajusta a largura
                 if (currentPageIndex == 0) {
-                    onFitWidth();
+                    onFitHeight();
                 }
             });
         } catch (IOException e) {
@@ -513,6 +514,7 @@ public class DocumentViewerController {
         btnZoomIn.setDisable(!hasDoc);
         btnZoomOut.setDisable(!hasDoc);
         btnFitWidth.setDisable(!hasDoc);
+        btnFitHeight.setDisable(!hasDoc);
     }
 
     @FXML
@@ -565,6 +567,19 @@ public class DocumentViewerController {
         if (width <= 0) width = 800; // Fallback
 
         double fitScale = (width - 40) / imageView.getImage().getWidth();
+        if (fitScale > 0) {
+            zoomProperty.set(fitScale);
+        }
+    }
+
+    @FXML
+    private void onFitHeight() {
+        if (imageView.getImage() == null) return;
+
+        double height = scrollPane.getHeight();
+        if (height <= 0) height = 600; // Fallback
+
+        double fitScale = (height - 40) / imageView.getImage().getHeight();
         if (fitScale > 0) {
             zoomProperty.set(fitScale);
         }
