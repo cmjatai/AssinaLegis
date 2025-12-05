@@ -1,35 +1,38 @@
 package br.leg.go.jatai.assinalegis;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import okhttp3.MediaType;
+import okhttp3.MultipartBody;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URI;
 import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
-import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 public class ApiService {
 
     private static ApiService instance;
     private final ConfigService configService;
-    private final HttpClient client;
+    private final OkHttpClient client;
     private final ObjectMapper mapper;
 
     private ApiService() {
         this.configService = ConfigService.getInstance();
         this.mapper = new ObjectMapper();
-        this.client = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
-                .followRedirects(HttpClient.Redirect.NORMAL)
+        this.client = new OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(30, TimeUnit.SECONDS)
                 .build();
     }
 
@@ -100,40 +103,41 @@ public class ApiService {
             urlBuilder.append(query);
         }
 
-        URI uri = URI.create(urlBuilder.toString());
-        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(uri);
+        Request.Builder requestBuilder = new Request.Builder()
+                .url(urlBuilder.toString());
 
         String token = configService.getToken();
         if (token != null && !token.isEmpty()) {
             requestBuilder.header("Authorization", "Token " + token);
         }
 
-        HttpRequest.BodyPublisher bodyPublisher = HttpRequest.BodyPublishers.noBody();
+        RequestBody body = null;
 
-        if (form != null && (method.equals("POST") || method.equals("PUT") || method.equals("PATCH"))) {
-            if (isMultipart(form)) {
-                String boundary = "--WebKitFormBoundary" + UUID.randomUUID().toString().replace("-", "") + "---";
-                requestBuilder.header("Content-Type", "multipart/form-data; boundary=" + boundary);
-                bodyPublisher = ofMimeMultipartData((Map<String, Object>) form, boundary);
+        if (method.equals("POST") || method.equals("PUT") || method.equals("PATCH")) {
+            if (form != null) {
+                if (isMultipart(form)) {
+                    body = buildMultipartBody((Map<String, Object>) form);
+                } else {
+                    String json = mapper.writeValueAsString(form);
+                    body = RequestBody.create(json, MediaType.parse("application/json; charset=utf-8"));
+                }
             } else {
-                requestBuilder.header("Content-Type", "application/json");
-                String json = mapper.writeValueAsString(form);
-                bodyPublisher = HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8);
+                body = RequestBody.create(new byte[0], null);
             }
         }
 
-        requestBuilder.method(method, bodyPublisher);
+        requestBuilder.method(method, body);
 
-        HttpResponse<InputStream> response = client.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofInputStream());
+        Response response = client.newCall(requestBuilder.build()).execute();
 
-        if (response.statusCode() >= 400) {
-            try (InputStream is = response.body()) {
-                String error = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-                throw new RuntimeException("API Error: " + response.statusCode() + " - " + error);
+        if (!response.isSuccessful()) {
+            try (ResponseBody responseBody = response.body()) {
+                String error = responseBody != null ? responseBody.string() : "Unknown error";
+                throw new RuntimeException("API Error: " + response.code() + " - " + error);
             }
         }
 
-        return response.body();
+        return response.body().byteStream();
     }
 
     private boolean isMultipart(Object form) {
@@ -148,56 +152,40 @@ public class ApiService {
         return false;
     }
 
-    private HttpRequest.BodyPublisher ofMimeMultipartData(Map<String, Object> data, String boundary) throws IOException {
-        List<byte[]> byteArrays = new ArrayList<>();
-        String separator = "--" + boundary + "\r\n";
+    private RequestBody buildMultipartBody(Map<String, Object> data) {
+        MultipartBody.Builder builder = new MultipartBody.Builder().setType(MultipartBody.FORM);
 
         for (Map.Entry<String, Object> entry : data.entrySet()) {
-            byteArrays.add(separator.getBytes(StandardCharsets.UTF_8));
+            String key = entry.getKey();
+            Object value = entry.getValue();
 
-            if (entry.getValue() instanceof File) {
-                File file = (File) entry.getValue();
-                String mimeType = Files.probeContentType(file.toPath());
-                if (mimeType == null) mimeType = "application/octet-stream";
-
-                String header = "Content-Disposition: form-data; name=\"" + entry.getKey() + "\"; filename=\"" + file.getName() + "\"\r\n" +
-                        "Content-Type: " + mimeType + "\r\n\r\n";
-                byteArrays.add(header.getBytes(StandardCharsets.UTF_8));
-                byteArrays.add(Files.readAllBytes(file.toPath()));
-                byteArrays.add("\r\n".getBytes(StandardCharsets.UTF_8));
-            } else if (entry.getValue() instanceof InputStream) {
-                 InputStream is = (InputStream) entry.getValue();
-                 String header = "Content-Disposition: form-data; name=\"" + entry.getKey() + "\"; filename=\"blob\"\r\n" +
-                        "Content-Type: application/octet-stream\r\n\r\n";
-                 byteArrays.add(header.getBytes(StandardCharsets.UTF_8));
-                 byteArrays.add(is.readAllBytes());
-                 byteArrays.add("\r\n".getBytes(StandardCharsets.UTF_8));
-            } else if (entry.getValue() instanceof byte[]) {
-                 byte[] bytes = (byte[]) entry.getValue();
-                 String header = "Content-Disposition: form-data; name=\"" + entry.getKey() + "\"; filename=\"blob\"\r\n" +
-                        "Content-Type: application/octet-stream\r\n\r\n";
-                 byteArrays.add(header.getBytes(StandardCharsets.UTF_8));
-                 byteArrays.add(bytes);
-                 byteArrays.add("\r\n".getBytes(StandardCharsets.UTF_8));
-            } else if (entry.getValue() instanceof FileData) {
-                 FileData fileData = (FileData) entry.getValue();
-                 String header = "Content-Disposition: form-data; name=\"" + entry.getKey() + "\"; filename=\"" + fileData.fileName + "\"\r\n" +
-                        "Content-Type: " + fileData.mimeType + "\r\n" +
-                        "Content-Transfer-Encoding: binary\r\n\r\n";
-                 byteArrays.add(header.getBytes(StandardCharsets.UTF_8));
-
-                 byteArrays.add(fileData.content);
-                 byteArrays.add("\r\n".getBytes(StandardCharsets.UTF_8));
+            if (value instanceof File) {
+                File file = (File) value;
+                String mimeType = "application/octet-stream";
+                try {
+                    String probe = Files.probeContentType(file.toPath());
+                    if (probe != null) mimeType = probe;
+                } catch (IOException e) {
+                    // ignore
+                }
+                builder.addFormDataPart(key, file.getName(), RequestBody.create(file, MediaType.parse(mimeType)));
+            } else if (value instanceof FileData) {
+                FileData fileData = (FileData) value;
+                builder.addFormDataPart(key, fileData.fileName, RequestBody.create(fileData.content, MediaType.parse(fileData.mimeType)));
+            } else if (value instanceof byte[]) {
+                builder.addFormDataPart(key, "blob", RequestBody.create((byte[]) value, MediaType.parse("application/octet-stream")));
+            } else if (value instanceof InputStream) {
+                try {
+                    byte[] bytes = ((InputStream) value).readAllBytes();
+                    builder.addFormDataPart(key, "blob", RequestBody.create(bytes, MediaType.parse("application/octet-stream")));
+                } catch (IOException e) {
+                    throw new RuntimeException("Erro ao ler InputStream para multipart", e);
+                }
             } else {
-                String header = "Content-Disposition: form-data; name=\"" + entry.getKey() + "\"\r\n\r\n";
-                byteArrays.add(header.getBytes(StandardCharsets.UTF_8));
-                byteArrays.add(String.valueOf(entry.getValue()).getBytes(StandardCharsets.UTF_8));
-                byteArrays.add("\r\n".getBytes(StandardCharsets.UTF_8));
+                builder.addFormDataPart(key, String.valueOf(value));
             }
         }
-        byteArrays.add(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
-
-        return HttpRequest.BodyPublishers.ofByteArrays(byteArrays);
+        return builder.build();
     }
 
     public static class FileData {
