@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class ApiService {
@@ -111,7 +112,7 @@ public class ApiService {
 
         if (form != null && (method.equals("POST") || method.equals("PUT") || method.equals("PATCH"))) {
             if (isMultipart(form)) {
-                String boundary = "---" + System.currentTimeMillis() + "---";
+                String boundary = "--WebKitFormBoundary" + UUID.randomUUID().toString().replace("-", "") + "---";
                 requestBuilder.header("Content-Type", "multipart/form-data; boundary=" + boundary);
                 bodyPublisher = ofMimeMultipartData((Map<String, Object>) form, boundary);
             } else {
@@ -139,7 +140,7 @@ public class ApiService {
         if (form instanceof Map) {
             Map<?, ?> map = (Map<?, ?>) form;
             for (Object value : map.values()) {
-                if (value instanceof InputStream || value instanceof File || value instanceof byte[]) {
+                if (value instanceof InputStream || value instanceof File || value instanceof byte[] || value instanceof FileData) {
                     return true;
                 }
             }
@@ -178,6 +179,15 @@ public class ApiService {
                  byteArrays.add(header.getBytes(StandardCharsets.UTF_8));
                  byteArrays.add(bytes);
                  byteArrays.add("\r\n".getBytes(StandardCharsets.UTF_8));
+            } else if (entry.getValue() instanceof FileData) {
+                 FileData fileData = (FileData) entry.getValue();
+                 String header = "Content-Disposition: form-data; name=\"" + entry.getKey() + "\"; filename=\"" + fileData.fileName + "\"\r\n" +
+                        "Content-Type: " + fileData.mimeType + "\r\n" +
+                        "Content-Transfer-Encoding: binary\r\n\r\n";
+                 byteArrays.add(header.getBytes(StandardCharsets.UTF_8));
+
+                 byteArrays.add(fileData.content);
+                 byteArrays.add("\r\n".getBytes(StandardCharsets.UTF_8));
             } else {
                 String header = "Content-Disposition: form-data; name=\"" + entry.getKey() + "\"\r\n\r\n";
                 byteArrays.add(header.getBytes(StandardCharsets.UTF_8));
@@ -188,5 +198,17 @@ public class ApiService {
         byteArrays.add(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
 
         return HttpRequest.BodyPublishers.ofByteArrays(byteArrays);
+    }
+
+    public static class FileData {
+        public final String fileName;
+        public final byte[] content;
+        public final String mimeType;
+
+        public FileData(String fileName, byte[] content, String mimeType) {
+            this.fileName = fileName;
+            this.content = content;
+            this.mimeType = mimeType;
+        }
     }
 }

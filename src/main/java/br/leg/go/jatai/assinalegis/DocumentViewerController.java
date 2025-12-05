@@ -614,6 +614,67 @@ public class DocumentViewerController {
     }
 
     @FXML
+    private void onSend() {
+        List<DocumentItem> itemsToSend = documentListView.getItems().stream()
+                .filter(item -> item.getPdDocumentSigned() != null)
+                .collect(Collectors.toList());
+
+        if (itemsToSend.isEmpty()) {
+            log("Nenhum documento assinado para enviar.\n");
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("Aviso");
+            alert.setHeaderText(null);
+            alert.setContentText("Não há documentos assinados para enviar.");
+            alert.showAndWait();
+            return;
+        }
+        log("Iniciando envio de " + itemsToSend.size() + " documentos...\n");
+
+        new Thread(() -> {
+            int successCount = 0;
+            for (DocumentItem item : itemsToSend) {
+                try {
+                    PDDocument signedDoc = item.getPdDocumentSigned();
+                    byte[] pdfBytes;
+                    try (java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream()) {
+                        signedDoc.save(baos);
+                        pdfBytes = baos.toByteArray();
+                    }
+
+                    Map<String, Object> form = new HashMap<>();
+                    form.put("texto_original", new ApiService.FileData("arq.pdf", pdfBytes, "application/pdf"));
+
+                    Integer id = item.getJsonData().has("id") ? item.getJsonData().get("id").asInt() : null;
+
+                    if (id != null) {
+                        ApiService.getInstance().patch("materia", "proposicao", id, null, form, null);
+                        successCount++;
+                        Platform.runLater(() -> log("Documento '" + item.getHeader() + "' enviado com sucesso.\n"));
+                    } else {
+                        Platform.runLater(() -> log("Erro: ID não encontrado para o documento '" + item.getHeader() + "'.\n"));
+                    }
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    Platform.runLater(() -> log("Erro ao enviar documento '" + item.getHeader() + "': " + e.getMessage() + "\n"));
+                }
+            }
+
+            final int totalSuccess = successCount;
+            Platform.runLater(() -> {
+                if (totalSuccess > 0) {
+                    Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                    alert.setTitle("Envio Concluído");
+                    alert.setHeaderText(null);
+                    alert.setContentText(totalSuccess + " documentos enviados com sucesso.");
+                    alert.showAndWait();
+                    onRefreshDocuments();
+                }
+            });
+        }).start();
+    }
+
+    @FXML
     private void onSign() {
         List<DocumentItem> selectedItems = documentListView.getItems().stream()
                 .filter(DocumentItem::isSelected)
