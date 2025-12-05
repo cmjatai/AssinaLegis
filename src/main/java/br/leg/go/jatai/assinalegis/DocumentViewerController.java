@@ -142,6 +142,21 @@ public class DocumentViewerController {
                     group.getChildren().remove(lastRect.get());
                 }
 
+                // recupera o documentItem selecionado
+                DocumentItem item = documentListView.getSelectionModel().getSelectedItem();
+                if (item == null) {
+                    log("Nenhum documento selecionado para adicionar a marcação.\n");
+                    return;
+                }
+                boolean isDisabled = false;
+                JsonNode jsonData = item.getJsonData();
+                if (jsonData.has("data_envio") && !jsonData.get("data_envio").isNull()) {
+                    isDisabled = true;
+                }
+                if (isDisabled) {
+                    log("O documento selecionado já foi enviado e não pode ser marcado.\n");
+                    return;
+                }
                 Rectangle rect = new Rectangle(rectWidth, rectHeight);
                 rect.setFill(Color.rgb(0, 115, 183, 0.6));
                 rect.setStroke(Color.rgb(0, 115, 183, 1.0));
