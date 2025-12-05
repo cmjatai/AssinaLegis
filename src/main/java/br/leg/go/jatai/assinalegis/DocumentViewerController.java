@@ -211,8 +211,8 @@ public class DocumentViewerController {
                 Map<String, Object> params = new HashMap<>();
                 params.put("o", "-data_envio,-id");
                 params.put("page_size", 100);
-                // params.put("data_envio__isnull", "True");
-                // params.put("data_recebimento__isnull", "True");
+                //params.put("data_envio__isnull", "True");
+                //params.put("data_recebimento__isnull", "True");
                 params.put("expand", "autor");
                 InputStream response = ApiService.getInstance().get("materia", "proposicao", null, null, params);
 
@@ -227,7 +227,7 @@ public class DocumentViewerController {
                             String description = node.has("descricao") ? node.get("descricao").asText() : "";
                             DocumentItem item = new DocumentItem(header, description, node);
 
-                            if (node.has("data_devolucao") && node.get("data_devolucao").isNull()) {
+                            if (node.has("data_envio") && node.get("data_envio").isNull()) {
                                 preloadPdf(item);
                             }
 
@@ -306,7 +306,7 @@ public class DocumentViewerController {
 
                         // Desabilita o checkbox se data_envio não for nulo
                         JsonNode jsonData = item.getJsonData();
-                        boolean hasDataEnvio = jsonData.has("data_devolucao") && !jsonData.get("data_devolucao").isNull();
+                        boolean hasDataEnvio = jsonData.has("data_envio") && !jsonData.get("data_envio").isNull();
                         checkBox.setDisable(hasDataEnvio);
 
                         Label headerLabel = new Label(item.getHeader());
@@ -379,7 +379,7 @@ public class DocumentViewerController {
                     DocumentItem item = cell.getItem();
                     if (item != null) {
                         JsonNode jsonData = item.getJsonData();
-                        boolean isDisabled = jsonData.has("data_devolucao") && !jsonData.get("data_devolucao").isNull();
+                        boolean isDisabled = jsonData.has("data_envio") && !jsonData.get("data_envio").isNull();
                         if (!isDisabled) {
                             item.setSelected(!item.isSelected());
                         }
