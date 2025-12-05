@@ -10,6 +10,7 @@ module br.leg.go.jatai.assinalegis {
     requires org.bouncycastle.provider;
     requires org.bouncycastle.pkix;
     requires java.prefs;
+    requires java.naming;
     requires java.net.http;
     requires com.fasterxml.jackson.databind;
     requires com.fasterxml.jackson.core;

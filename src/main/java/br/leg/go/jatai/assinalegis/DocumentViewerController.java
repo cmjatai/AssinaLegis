@@ -151,6 +151,7 @@ public class DocumentViewerController {
 
                 group.getChildren().add(rect);
                 lastRect.set(rect);
+                updateCurrentItemState();
                 event.consume();
             }
         });
@@ -210,8 +211,8 @@ public class DocumentViewerController {
                 Map<String, Object> params = new HashMap<>();
                 params.put("o", "-data_envio,-id");
                 params.put("page_size", 100);
-                params.put("data_envio__isnull", "True");
-                params.put("data_recebimento__isnull", "True");
+                // params.put("data_envio__isnull", "True");
+                // params.put("data_recebimento__isnull", "True");
                 params.put("expand", "autor");
                 InputStream response = ApiService.getInstance().get("materia", "proposicao", null, null, params);
 
@@ -521,6 +522,7 @@ public class DocumentViewerController {
     private void onFirstPage() {
         if (currentPageIndex > 0) {
             currentPageIndex = 0;
+            updateCurrentItemState();
             new Thread(this::renderCurrentPage).start();
         }
     }
@@ -529,6 +531,7 @@ public class DocumentViewerController {
     private void onPrevPage() {
         if (currentPageIndex > 0) {
             currentPageIndex--;
+            updateCurrentItemState();
             new Thread(this::renderCurrentPage).start();
         }
     }
@@ -537,6 +540,7 @@ public class DocumentViewerController {
     private void onNextPage() {
         if (currentPageIndex < totalPages - 1) {
             currentPageIndex++;
+            updateCurrentItemState();
             new Thread(this::renderCurrentPage).start();
         }
     }
@@ -545,7 +549,16 @@ public class DocumentViewerController {
     private void onLastPage() {
         if (currentPageIndex < totalPages - 1) {
             currentPageIndex = totalPages - 1;
+            updateCurrentItemState();
             new Thread(this::renderCurrentPage).start();
+        }
+    }
+
+    private void updateCurrentItemState() {
+        DocumentItem selectedItem = documentListView.getSelectionModel().getSelectedItem();
+        if (selectedItem != null) {
+            selectedItem.setSavedPageIndex(currentPageIndex);
+            selectedItem.setSavedRect(lastRect.get());
         }
     }
 

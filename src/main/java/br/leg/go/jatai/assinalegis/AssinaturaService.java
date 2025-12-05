@@ -2,6 +2,9 @@ package br.leg.go.jatai.assinalegis;
 
 import br.leg.go.jatai.assinalegis.DocumentViewerController.DocumentItem;
 import com.fasterxml.jackson.databind.JsonNode;
+
+import javafx.geometry.Point2D;
+import javafx.geometry.Rectangle2D;
 import javafx.scene.shape.Rectangle;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.io.RandomAccessRead;
@@ -71,6 +74,22 @@ public class AssinaturaService {
             throw new Exception("Chave privada ou cadeia de certificados não encontrada para o alias: " + alias);
         }
 
+        // Extrai o nome do assinante (CN) do certificado
+        String nomeAssinante = "";
+        try {
+            X509Certificate x509Cert = (X509Certificate) certificateChain[0];
+            String subjectDN = x509Cert.getSubjectX500Principal().getName();
+            javax.naming.ldap.LdapName ln = new javax.naming.ldap.LdapName(subjectDN);
+            for (javax.naming.ldap.Rdn rdn : ln.getRdns()) {
+                if (rdn.getType().equalsIgnoreCase("CN")) {
+                    nomeAssinante = rdn.getValue().toString();
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         for (DocumentItem item : itens) {
             byte[] originalBytes = item.getOriginalBytes();
             if (originalBytes == null) {
@@ -124,7 +143,7 @@ public class AssinaturaService {
 
                 float width = (float) (5.0 / 2.54 * 72); // 5cm em pontos
                 float height = (float) (1.5 / 2.54 * 72); // 1.5cm em pontos
-                float x = 20;
+                float x = 7;
                 float y;
 
                 if (item.getSavedRect() != null) {
@@ -146,12 +165,12 @@ public class AssinaturaService {
                 } else {
                     // REGRA_A_SEM_CONTEUDO
                     // Canto inferior esquerdo da página
-                    // Se origem é Top-Left: y = mediaBox.getHeight() - 20 - height
-                    y = (float) (mediaBox.getHeight() - 20 - height);
+                    // Se origem é Top-Left: y = mediaBox.getHeight() - 7 - height
+                    y = (float) (mediaBox.getHeight() - 7 - height);
                 }
 
                 // Cria a imagem da assinatura (REGRA_B)
-                BufferedImage image = createSignatureImage(width, height, casa);
+                BufferedImage image = createSignatureImage(width, height, casa, nomeAssinante);
 
                 // Configurações da assinatura visível
                 SignatureOptions signatureOptions = new SignatureOptions();
@@ -183,7 +202,7 @@ public class AssinaturaService {
 
                     signatureOptions.setVisualSignature(visibleSigProperties);
                 }
-                signatureOptions.setPage(pageIndex + 1);
+                signatureOptions.setPage(pageIndex);
 
                 // --- FIM DA CRIAÇÃO DA ASSINATURA VISÍVEL ---
 
@@ -256,7 +275,8 @@ public class AssinaturaService {
         return slug.replaceAll("^-|-$", "");
     }
 
-    private BufferedImage createSignatureImage(float widthPoints, float heightPoints, JsonNode casa) throws IOException {
+
+    private BufferedImage createSignatureImage(float widthPoints, float heightPoints, JsonNode casa, String nomeAssinante) throws IOException {
         // Converte pontos para pixels (assumindo 300 DPI para boa qualidade)
         int dpi = 300;
         int width = Math.round(widthPoints / 72f * dpi);
@@ -272,31 +292,34 @@ public class AssinaturaService {
         // Fundo azul (0, 115, 183)
         g2d.setColor(new Color(0, 115, 183));
         g2d.fillRect(0, 0, width, height);
+        drawRotatedGradient(g2d, new java.awt.Rectangle(0, 0, width, height),
+        60, 100);
 
         // Ícone alinhado à direita
-        try (InputStream is = App.class.getResourceAsStream("/icon.png")) {
-            if (is != null) {
-                BufferedImage icon = ImageIO.read(is);
-                // Escala o ícone para caber na altura, mantendo proporção
-                double scale = (double) height / icon.getHeight();
-                int iconWidth = (int) (icon.getWidth() * scale);
-                int iconHeight = height; // Ocupa toda a altura
+        BufferedImage icon = null;
 
-                g2d.drawImage(icon, width - iconWidth, 0, iconWidth, iconHeight, null);
+        // Tenta carregar do logotipo da casa (URL)
+        if (casa != null && casa.has("logotipo") && !casa.get("logotipo").isNull() && !casa.get("logotipo").asText().equals("null")) {
+            String logoUrl = casa.get("logotipo").asText();
+            if (logoUrl != null && !logoUrl.isEmpty()) {
+                try {
+                    java.net.URL url = new java.net.URL(logoUrl);
+                    icon = ImageIO.read(url);
+                } catch (Exception e) {
+                    System.err.println("Erro ao carregar logotipo da URL: " + logoUrl);
+                    e.printStackTrace();
+                }
             }
-        } catch (Exception e) {
-            e.printStackTrace();
         }
 
-        // Texto do nome da Casa Legislativa (Canto Superior Esquerdo)
+        g2d.setColor(Color.WHITE);
+
         String nomeCasa = "Câmara Municipal";
         if (casa != null && casa.has("nome")) {
             nomeCasa = casa.get("nome").asText();
         }
-
-        g2d.setColor(Color.WHITE);
-        // Calcula tamanho da fonte para não ultrapassar 70% da largura
-        int maxTextWidth = (int) (width * 0.7);
+        // Calcula tamanho da fonte para não ultrapassar 60% da largura
+        int maxTextWidth = (int) (width * 0.6);
         int fontSize = height / 3; // Começa com um tamanho razoável
         Font font = new Font("SansSerif", Font.BOLD, fontSize);
         g2d.setFont(font);
@@ -308,18 +331,115 @@ public class AssinaturaService {
             g2d.setFont(font);
             fm = g2d.getFontMetrics();
         }
-        g2d.drawString(nomeCasa, 10, fm.getAscent() + 5);
+        // Desenha o nome da casa (Canto Superior Direito da área de texto)
+        int xNomeCasa = (int) (width) - fm.stringWidth(nomeCasa) - 10;
+        g2d.drawString(nomeCasa, xNomeCasa, fm.getAscent() + 5);
+
+        // Nome do Assinante (Centralizado na Vertical, Alinhado à Esquerda)
+        if (nomeAssinante == null) nomeAssinante = "";
+        if (nomeAssinante.contains(":")) {
+            nomeAssinante = nomeAssinante.split(":")[0];
+        }
+        nomeAssinante = nomeAssinante.toUpperCase();
+
+        // Calcula tamanho da fonte para não ultrapassar 70% da largura
+        maxTextWidth = (int) (width * 0.7);
+        fontSize = height / 3; // Começa com um tamanho razoável
+        font = new Font("SansSerif", Font.BOLD, fontSize);
+        g2d.setFont(font);
+        fm = g2d.getFontMetrics();
+
+        while (fm.stringWidth(nomeAssinante) > maxTextWidth && fontSize > 5) {
+            fontSize--;
+            font = new Font("SansSerif", Font.BOLD, fontSize);
+            g2d.setFont(font);
+            fm = g2d.getFontMetrics();
+        }
+
+        // Centralizado na vertical
+        int yText = (height - fm.getHeight()) / 2 + fm.getAscent();
+        g2d.drawString(nomeAssinante, 10, yText);
 
         // Data e Hora (Canto Inferior Esquerdo)
-        String dataHora = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"));
-        int dateFontSize = height / 4;
+        // Mantendo a data/hora, mas ajustando para não conflitar se necessário.
+        // Como o nome está centralizado, a data no rodapé pode ficar ok se a fonte do nome não for gigante.
+        // Vamos usar a mesma lógica de tamanho relativo (90% do nome)
+        String dataHora = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm"));
+        int dateFontSize = (int) (fontSize * 0.9);
         Font dateFont = new Font("SansSerif", Font.PLAIN, dateFontSize);
         g2d.setFont(dateFont);
         FontMetrics dateFm = g2d.getFontMetrics();
+
+        // Posiciona no rodapé com margem
         g2d.drawString(dataHora, 10, height - dateFm.getDescent() - 5);
+
+
+
+        // Fallback para o ícone padrão se não conseguiu carregar o logotipo
+        if (icon == null) {
+            try (InputStream is = App.class.getResourceAsStream("/icon.png")) {
+                if (is != null) {
+                    icon = ImageIO.read(is);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        if (icon != null) {
+            // Define a área máxima para o ícone (30% da largura e 85% da altura)
+            double maxIconWidth = width * 0.28; // 28% para deixar uma pequena margem
+            double maxIconHeight = height * 0.85;
+
+            double scaleWidth = maxIconWidth / icon.getWidth();
+            double scaleHeight = maxIconHeight / icon.getHeight();
+
+            // Usa a menor escala para garantir que cabe em ambas as dimensões sem distorcer
+            double scale = Math.min(scaleWidth, scaleHeight);
+
+            int iconWidth = (int) (icon.getWidth() * scale);
+            int iconHeight = (int) (icon.getHeight() * scale);
+
+            // Centralizado na vertical
+            int yPos = (height - iconHeight) - 3 ;
+
+            // Centralizado horizontalmente na área dos 30% à direita
+            int areaWidth = (int) (width * 0.30);
+            int areaStart = (int) (width - areaWidth - 3);
+            int xPos = areaStart + (areaWidth - iconWidth);
+
+            g2d.drawImage(icon, xPos, yPos, iconWidth, iconHeight, null);
+        }
 
         g2d.dispose();
         return image;
+    }
+
+    private void drawRotatedGradient(Graphics2D g2d, java.awt.Rectangle rect, double rotationDegrees, int maxAlpha) {
+        if (rect == null) {
+            return;
+        }
+
+        AffineTransform originalTransform = g2d.getTransform();
+
+        // Rotaciona o Graphics2D em torno do centro do retângulo
+        g2d.rotate(Math.toRadians(rotationDegrees), rect.getCenterX(), rect.getCenterY());
+
+        // Cria o gradiente: Branco transparente (0) -> Branco com transparência definida (maxAlpha)
+        Color startColor = new Color(255, 255, 255, 0);
+        Color endColor = new Color(255, 255, 255, maxAlpha);
+
+        // Gradiente horizontal (esquerda para direita) dentro do retângulo rotacionado
+        GradientPaint gradient = new GradientPaint(
+                (float) rect.getX(), (float) rect.getY(), startColor,
+                (float) (rect.getX() + rect.getWidth()), (float) rect.getY(), endColor
+        );
+
+        g2d.setPaint(gradient);
+        g2d.fill(rect);
+
+        // Restaura a transformação original
+        g2d.setTransform(originalTransform);
     }
 
     private byte[] imageToBytes(BufferedImage image) throws IOException {
