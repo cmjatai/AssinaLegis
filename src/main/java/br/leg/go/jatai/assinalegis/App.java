@@ -10,7 +10,9 @@ import javafx.scene.image.Image;
 import javafx.stage.Stage;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.Objects;
+import java.util.Properties;
 
 /**
  * Aplicativo principal AssinaLegis.
@@ -20,20 +22,19 @@ public class App extends Application implements ConfigService.ConfigObserver {
 
     private static Scene scene;
     private Stage stage;
+    private String appTitleBase = "AssinaLegis";
 
     @Override
     public void start(Stage stage) throws IOException {
         this.stage = stage;
         ConfigService.getInstance().addObserver(this);
 
+        loadAppProperties();
+
         scene = new Scene(loadFXML("main"));
 
         // Define título inicial
-        stage.setTitle("AssinaLegis");
-        JsonNode casa = ConfigService.getInstance().getCasaLegislativa(JsonNode.class);
-        if (casa != null && casa.has("nome")) {
-            stage.setTitle("AssinaLegis - " + casa.get("nome").asText());
-        }
+        updateTitle(ConfigService.getInstance().getCasaLegislativa(JsonNode.class));
 
         // Configura o ícone da janela
         stage.getIcons().add(new Image(Objects.requireNonNull(App.class.getResourceAsStream("/icon.png"))));
@@ -42,18 +43,39 @@ public class App extends Application implements ConfigService.ConfigObserver {
         stage.show();
     }
 
+    private void loadAppProperties() {
+        Properties props = new Properties();
+        try (InputStream is = App.class.getResourceAsStream("/application.properties")) {
+            if (is != null) {
+                props.load(is);
+                String name = props.getProperty("app.name", "AssinaLegis");
+                String version = props.getProperty("app.version", "");
+                if (!version.isEmpty()) {
+                    appTitleBase = name + " v" + version;
+                } else {
+                    appTitleBase = name;
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("Erro ao carregar application.properties: " + e.getMessage());
+        }
+    }
+
+    private void updateTitle(JsonNode casa) {
+        if (stage == null) return;
+
+        String title = appTitleBase;
+        if (casa != null && casa.has("nome")) {
+            title += " - " + casa.get("nome").asText();
+        }
+        stage.setTitle(title);
+    }
+
     @Override
     public void onConfigChanged(String key, Object newValue) {
         if (ConfigService.KEY_CASA.equals(key) && newValue instanceof JsonNode) {
             JsonNode casa = (JsonNode) newValue;
-            if (casa.has("nome")) {
-                String nome = casa.get("nome").asText();
-                Platform.runLater(() -> {
-                    if (stage != null) {
-                        stage.setTitle("AssinaLegis - " + nome);
-                    }
-                });
-            }
+            Platform.runLater(() -> updateTitle(casa));
         }
     }
 
