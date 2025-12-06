@@ -28,6 +28,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ObjectInputFilter.Config;
 import java.net.URL;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -148,6 +149,7 @@ public class DocumentViewerController {
                     log("Nenhum documento selecionado para adicionar a marcação.\n");
                     return;
                 }
+                // Verifica se o documento já foi enviado, desabilitando a marcação se for o caso
                 boolean isDisabled = false;
                 JsonNode jsonData = item.getJsonData();
                 if (jsonData.has("data_envio") && !jsonData.get("data_envio").isNull()) {
@@ -323,15 +325,41 @@ public class DocumentViewerController {
                         JsonNode jsonData = item.getJsonData();
                         boolean hasDataEnvio = jsonData.has("data_envio") && !jsonData.get("data_envio").isNull();
                         checkBox.setDisable(hasDataEnvio);
+                        if (hasDataEnvio) {
+                            checkBox.setTooltip(new Tooltip("Este documento já foi enviado e não pode ser selecionado."));
+                        }
 
-                        Label headerLabel = new Label(item.getHeader());
-                        headerLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
-                        headerLabel.setWrapText(true);
+                        Hyperlink headerLink = new Hyperlink(item.getHeader());
+                        headerLink.setStyle("-fx-font-weight: bold; -fx-font-size: 14px; -fx-border-color: transparent; -fx-padding: 0;");
+                        headerLink.setWrapText(true);
+
+                        String urlTemp = ConfigService.getInstance().getUrl();
+                        if (urlTemp.endsWith("/")) {
+                            urlTemp = urlTemp.substring(0, urlTemp.length() - 1);
+                        }
+                        if (hasDataEnvio) {
+                            headerLink.setStyle(headerLink.getStyle() + " -fx-text-fill: #640606ff;");
+                            headerLink.setTooltip(new Tooltip("Este documento já foi enviado."));
+                            urlTemp += "/materia/" + jsonData.get("object_id").asText();
+                        } else {
+                            headerLink.setStyle(headerLink.getStyle() + " -fx-text-fill: #064664ff;");
+                            urlTemp += "/proposicao/" + jsonData.get("id").asText();
+                        }
+
+                        final String url = urlTemp;
+                        // Ação ao clicar no link
+                        headerLink.setOnAction(e -> {
+                            try {
+                                App.openUrl(url);
+                            } catch (Exception ex) {
+                                log("Erro ao abrir link: " + ex.getMessage() + "\n");
+                            }
+                        });
 
                         // Vincula a largura do header para evitar scroll horizontal
-                        headerLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(65));
+                        headerLink.prefWidthProperty().bind(getListView().widthProperty().subtract(65));
 
-                        headerHBox.getChildren().addAll(checkBox, headerLabel);
+                        headerHBox.getChildren().addAll(checkBox, headerLink);
                         mainVBox.getChildren().add(headerHBox);
 
                         // VBox para detalhes (Autor, Datas, Descrição)

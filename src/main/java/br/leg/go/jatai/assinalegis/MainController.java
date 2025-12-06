@@ -135,7 +135,7 @@ public class MainController {
 
     @FXML
     private void onAbout() {
-        logArea.appendText("AssinaLegis v1.0.0\n");
+        logArea.appendText("AssinaLegis\n");
         logArea.appendText("Câmara Municipal de Jataí\n");
         logArea.appendText("Desenvolvido para assinatura digital de documentos.\n");
     }

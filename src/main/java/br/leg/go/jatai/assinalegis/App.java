@@ -20,12 +20,14 @@ import java.util.Properties;
  */
 public class App extends Application implements ConfigService.ConfigObserver {
 
+    private static App instance;
     private static Scene scene;
     private Stage stage;
     private String appTitleBase = "AssinaLegis";
 
     @Override
     public void start(Stage stage) throws IOException {
+        instance = this;
         this.stage = stage;
         ConfigService.getInstance().addObserver(this);
 
@@ -90,5 +92,11 @@ public class App extends Application implements ConfigService.ConfigObserver {
 
     public static void main(String[] args) {
         launch(args);
+    }
+
+    public static void openUrl(String url) {
+        if (instance != null) {
+            instance.getHostServices().showDocument(url);
+        }
     }
 }
