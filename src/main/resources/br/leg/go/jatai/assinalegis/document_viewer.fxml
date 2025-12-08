@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.CheckBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ListView?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox xmlns:fx="http://javafx.com/fxml/1"
+      xmlns="http://javafx.com/javafx/21"
+      fx:controller="br.leg.go.jatai.assinalegis.DocumentViewerController"
+      alignment="CENTER"
+      stylesheets="@styles.css">
+
+    <HBox alignment="CENTER_LEFT" spacing="5">
+        <padding>
+            <Insets top="5" right="5" bottom="5" left="5"/>
+        </padding>
+        <HBox alignment="CENTER_LEFT" spacing="10" HBox.hgrow="ALWAYS">
+            <Button text="Atualizar Lista" onAction="#onRefreshDocuments"/>
+            <Label text="Documentos para Assinatura" HBox.hgrow="ALWAYS" style="-fx-font-size: 12px; -fx-font-weight: bold;"/>
+            <CheckBox fx:id="chkSelectAll" text="Selecionar Todos" onAction="#onSelectAll"/>
+        </HBox>
+        <HBox alignment="CENTER" spacing="20" HBox.hgrow="ALWAYS" maxWidth="Infinity">
+            <padding>
+                <Insets top="5" right="5" bottom="5" left="5"/>
+            </padding>
+            <Button text="Assinar Todos Selecionados" onAction="#onSign"/>
+            <Button text="Submeter Arquivos Assinados" onAction="#onSend"/>
+            <HBox alignment="CENTER" spacing="5">
+                <Button fx:id="btnFirstPage" text="&lt;&lt;" onAction="#onFirstPage"/>
+                <Button fx:id="btnPrevPage" text="&lt;" onAction="#onPrevPage"/>
+                <Button fx:id="btnNextPage" text="&gt;" onAction="#onNextPage"/>
+                <Button fx:id="btnLastPage" text="&gt;&gt;" onAction="#onLastPage"/>
+            </HBox>
+            <HBox alignment="CENTER" spacing="5">
+                <Button fx:id="btnFitWidth" text="Ajustar à Largura" onAction="#onFitWidth"/>
+                <Button fx:id="btnZoomOut" text="-" onAction="#onZoomOut"/>
+                <Button fx:id="btnZoomIn" text="+" onAction="#onZoomIn"/>
+                <Button fx:id="btnFitHeight" text="Ajustar à Altura" onAction="#onFitHeight"/>
+            </HBox>
+        </HBox>
+    </HBox>
+
+    <HBox fx:id="vBoxListProps" spacing="0" alignment="CENTER" VBox.vgrow="ALWAYS">
+        <ListView fx:id="documentListView" prefWidth="400" minWidth="400" maxWidth="400"/>
+        <ScrollPane fx:id="scrollPane" HBox.hgrow="ALWAYS" maxWidth="Infinity" fitToWidth="true" fitToHeight="true" pannable="true" style="-fx-background-color: #aaaaaa;">
+            <padding>
+                <Insets top="5" right="5" bottom="5" left="5"/>
+            </padding>
+            <StackPane fx:id="contentHolder"  style="-fx-background-color: #aaaaaa;"/>
+        </ScrollPane>
+    </HBox>
+
+</VBox>
