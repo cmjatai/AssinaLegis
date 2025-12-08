@@ -87,6 +87,11 @@ Gera: `dist/AssinaLegis-1.0.0.msi`
 *   `dist/`: Pasta de destino para os executáveis e instaladores gerados.
 *   `packaging/`: Recursos específicos para empacotamento (scripts, ícones extras).
 
+## Atenção aos instaladores
+* os arquivos de instalação gerados pelo jpackage podem ser grandes, pois incluem uma runtime Java embutida para garantir compatibilidade e
+não estão disponibilizados aqui no repositório. Eles devem ser gerados localmente seguindo as instruções acima. ou baixados de meu drive compartilhado:
+[Link para Download dos Instaladores](https://drive.google.com/drive/folders/1va1BkV7KyGoOuFIh8rsNMWclBkxA93Tt?usp=sharing)
+
 ## Configuração
 
 Ao iniciar pela primeira vez, acesse o menu de configurações para definir:
