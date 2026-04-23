@@ -728,6 +728,112 @@ public class DocumentViewerController {
             return;
         }
 
+        Alert typeAlert = new Alert(Alert.AlertType.CONFIRMATION);
+        typeAlert.setTitle("Tipo de Certificado");
+        typeAlert.setHeaderText("Selecione o tipo de certificado");
+        typeAlert.setContentText("Qual tipo de certificado deseja usar?");
+
+        ButtonType btnA1 = new ButtonType("Arquivo (A1)");
+        ButtonType btnA3 = new ButtonType("Token (A3)");
+        ButtonType btnCancel = new ButtonType("Cancelar", ButtonBar.ButtonData.CANCEL_CLOSE);
+
+        typeAlert.getButtonTypes().setAll(btnA1, btnA3, btnCancel);
+
+        Optional<ButtonType> typeResult = typeAlert.showAndWait();
+        if (!typeResult.isPresent() || typeResult.get() == btnCancel) {
+            return;
+        }
+
+        if (typeResult.get() == btnA1) {
+            signA1(selectedItems);
+        } else {
+            signA3(selectedItems);
+        }
+    }
+
+    private void signA3(List<DocumentItem> selectedItems) {
+        TokenService tokenService = new TokenService();
+        List<String> detectedLibs = tokenService.detectLibraries();
+        String manualLibPath = null;
+
+        if (detectedLibs.isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+            alert.setTitle("Driver não encontrado");
+            alert.setHeaderText("Driver do token não detectado automaticamente.");
+            alert.setContentText("Deseja selecionar o arquivo do driver (DLL/SO) manualmente?");
+            Optional<ButtonType> res = alert.showAndWait();
+            if (res.isPresent() && res.get() == ButtonType.OK) {
+                FileChooser fileChooser = new FileChooser();
+                fileChooser.setTitle("Selecionar Driver do Token");
+                if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                    fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Bibliotecas Windows", "*.dll"));
+                } else {
+                    fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Bibliotecas Linux", "*.so"));
+                }
+                File f = fileChooser.showOpenDialog(documentListView.getScene().getWindow());
+                if (f != null) manualLibPath = f.getAbsolutePath();
+            }
+        }
+
+        if (detectedLibs.isEmpty() && manualLibPath == null) {
+            log("Operação cancelada: Driver não selecionado.\n");
+            return;
+        }
+
+        String pin = solicitarSenha();
+        if (pin == null) return;
+
+        final String finalManualLibPath = manualLibPath;
+        final String finalPin = pin;
+
+        log("Iniciando assinatura com Token A3...\n");
+
+        new Thread(() -> {
+            try {
+                KeyStore ks;
+                if (finalManualLibPath != null) {
+                    ks = tokenService.getKeyStore(finalManualLibPath, finalPin.toCharArray());
+                } else {
+                    ks = tokenService.getKeyStore(finalPin.toCharArray());
+                }
+
+                String alias = null;
+                Enumeration<String> aliases = ks.aliases();
+                while (aliases.hasMoreElements()) {
+                    String a = aliases.nextElement();
+                    alias = a;
+                    break;
+                }
+
+                if (alias == null) throw new Exception("Nenhum certificado encontrado no Token.");
+
+                AssinaturaService service = new AssinaturaService();
+                service.assinarDocumentos(selectedItems, ks, alias, finalPin.toCharArray());
+
+                Platform.runLater(() -> {
+                    log("Sucesso! " + selectedItems.size() + " documentos assinados (A3).\n");
+                    Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                    alert.setTitle("Sucesso");
+                    alert.setHeaderText(null);
+                    alert.setContentText("Documentos assinados com sucesso!");
+                    alert.showAndWait();
+                });
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                Platform.runLater(() -> {
+                    log("Erro ao assinar (A3): " + e.getMessage() + "\n");
+                    Alert alert = new Alert(Alert.AlertType.ERROR);
+                    alert.setTitle("Erro");
+                    alert.setHeaderText("Falha na assinatura A3");
+                    alert.setContentText(e.getMessage());
+                    alert.showAndWait();
+                });
+            }
+        }).start();
+    }
+
+    private void signA1(List<DocumentItem> selectedItems) {
         // 1. Tenta pegar o certificado da configuração
         String certPath = configService.getCertPath();
         File certificadoFile;
