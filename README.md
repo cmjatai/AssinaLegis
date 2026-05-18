@@ -2,7 +2,7 @@
 
 Aplicativo desktop para assinatura digital de documentos legislativos, desenvolvido pela Câmara Municipal de Jataí.
 
-O sistema permite visualizar documentos PDF obtidos via API, assiná-los digitalmente utilizando certificados A1 (PKCS#12) e enviá-los de volta para o sistema de gestão legislativa.
+O sistema permite visualizar documentos PDF obtidos via API, assiná-los digitalmente utilizando certificados A1 e A3 e enviá-los de volta para o sistema de gestão legislativa.
 
 ## Funcionalidades
 
@@ -50,12 +50,12 @@ mvn clean package
 ```
 
 O arquivo será gerado na pasta `dist/` na raiz do projeto:
-*   `dist/assinalegis-1.0.0-SNAPSHOT.jar`
+*   `dist/assinalegis-1.1.0-SNAPSHOT.jar`
 
 Para executar o JAR gerado:
 
 ```bash
-java -jar dist/assinalegis-1.0.0-SNAPSHOT.jar
+java -jar dist/assinalegis-1.1.0-SNAPSHOT.jar
 ```
 
 ## Gerando Instaladores Nativos
@@ -69,7 +69,7 @@ Requer `dpkg-deb` e `fakeroot` instalados.
 ```bash
 mvn clean package -Pdeb
 ```
-Gera: `dist/assinalegis_1.0.0-1_amd64.deb`
+Gera: `dist/assinalegis_1.1.0-1_amd64.deb`
 
 ### Windows (.msi)
 
@@ -78,7 +78,7 @@ Requer o WiX Toolset (v3 ou v4) instalado no ambiente de build Windows.
 ```bash
 mvn clean package -Pwindows
 ```
-Gera: `dist/AssinaLegis-1.0.0.msi`
+Gera: `dist/AssinaLegis-1.1.0.msi`
 
 ## Estrutura de Pastas
 
