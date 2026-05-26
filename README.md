@@ -11,7 +11,7 @@
 ![Maven](https://img.shields.io/badge/build-Maven-red?logo=apachemaven)
 ![License](https://img.shields.io/badge/license-GPL--3.0-green)
 
-O AssinaLegis permite ao servidor público visualizar documentos PDF obtidos diretamente do [SAPL](https://github.com/interlegis/sapl), posicionar visualmente a assinatura na página desejada e assinar com certificado A1 (arquivo PFX/P12) ou A3 (token/smartcard), devolvendo o documento assinado à API automaticamente.
+O AssinaLegis permite ao servidor público visualizar e assinar documentos PDF com certificado A1 (arquivo PFX/P12) ou A3 (token/smartcard) em dois fluxos complementares: no modo **M1 (SAPL/API)**, os documentos são carregados da API e enviados automaticamente após a assinatura; no modo **M2 (Local)**, os arquivos PDF são carregados do computador, assinados por etapas e salvos em pasta local.
 
 ---
 
@@ -19,14 +19,15 @@ O AssinaLegis permite ao servidor público visualizar documentos PDF obtidos dir
 
 1. [Para Usuários Finais — Download e Instalação](#1-para-usuários-finais--download-e-instalação)
 2. [Primeira Configuração](#2-primeira-configuração)
-3. [Funcionalidades](#3-funcionalidades)
-4. [Para Desenvolvedores — Pré-requisitos](#4-para-desenvolvedores--pré-requisitos)
-5. [Como Compilar e Executar](#5-como-compilar-e-executar)
-6. [Gerando Instaladores Nativos](#6-gerando-instaladores-nativos)
-7. [Estrutura do Projeto](#7-estrutura-do-projeto)
-8. [Arquitetura e Tecnologias](#8-arquitetura-e-tecnologias)
-9. [Detalhes Técnicos Avançados](#9-detalhes-técnicos-avançados)
-10. [Licença](#10-licença)
+3. [Modos de Operação (M1 e M2)](#3-modos-de-operação-m1-e-m2)
+4. [Funcionalidades](#4-funcionalidades)
+5. [Para Desenvolvedores — Pré-requisitos](#5-para-desenvolvedores--pré-requisitos)
+6. [Como Compilar e Executar](#6-como-compilar-e-executar)
+7. [Gerando Instaladores Nativos](#7-gerando-instaladores-nativos)
+8. [Estrutura do Projeto](#8-estrutura-do-projeto)
+9. [Arquitetura e Tecnologias](#9-arquitetura-e-tecnologias)
+10. [Detalhes Técnicos Avançados](#10-detalhes-técnicos-avançados)
+11. [Licença](#11-licença)
 
 ---
 
@@ -62,7 +63,54 @@ As configurações são salvas localmente de forma persistente (não é necessá
 
 ---
 
-## 3. Funcionalidades
+## 3. Modos de Operação (M1 e M2)
+
+O AssinaLegis possui dois modos de trabalho no visualizador de documentos:
+
+- **M1 (SAPL/API):** busca documentos diretamente da API, exibe a lista de proposições e permite enviar os PDFs assinados de volta ao backend.
+- **M2 (Local):** trabalha com arquivos PDF locais, sem depender da API para carregar documentos, ideal para assinatura por etapas e processamento manual.
+
+### M1 (SAPL/API)
+
+- Exibe botão de atualização da lista de documentos vindos da API.
+- Carrega itens do tipo proposição/documento remoto.
+- Permite assinar e submeter arquivos assinados para a API.
+- Quando não há token configurado, o M1 fica indisponível.
+
+### M2 (Local)
+
+- Permite carregar PDFs locais em múltiplas etapas, sem limpar automaticamente a lista atual.
+- Exibe botão para remover arquivos individualmente na lista.
+- Exibe botão **Limpar Lista** para remover todos os arquivos locais carregados.
+- Permite assinar documentos e salvar os arquivos assinados em pasta local.
+
+### Quando usar cada modo
+
+- Use **M1** quando o fluxo envolve documentos oficiais já disponíveis no SAPL e devolução automática para API.
+- Use **M2** quando os arquivos já estão no computador e o objetivo é assinatura local com controle manual do lote.
+
+### Passo a passo rápido
+
+#### Fluxo M1 (SAPL/API)
+
+1. Acesse **Configurações** e preencha **URL da API** e **Token de Acesso**.
+2. Ative o modo **M1 (SAPL/API)**.
+3. Clique em **Atualizar Lista** para carregar os documentos pendentes.
+4. Selecione os documentos, posicione a marcação de assinatura no preview e clique em **Assinar Todos Selecionados**.
+5. Clique em **Submeter Arquivos Assinados** para enviar os PDFs assinados para a API.
+
+#### Fluxo M2 (Local)
+
+1. Ative o modo **M2 (Local)**.
+2. Clique em **Carregar PDFs** quantas vezes forem necessárias para montar o lote por etapas.
+3. Use **Remover** em cada item para excluir arquivos específicos, quando necessário.
+4. Use **Limpar Lista** para reiniciar o lote local.
+5. Selecione os arquivos, posicione a marcação e clique em **Assinar Todos Selecionados**.
+6. Clique em **Salvar Arquivos Assinados** para escolher a pasta de destino.
+
+---
+
+## 4. Funcionalidades
 
 - **Busca automática de documentos** pendentes de assinatura via API REST
 - **Visualização de PDF** integrada com zoom e navegação por páginas
@@ -76,7 +124,7 @@ As configurações são salvas localmente de forma persistente (não é necessá
 
 ---
 
-## 4. Para Desenvolvedores — Pré-requisitos
+## 5. Para Desenvolvedores — Pré-requisitos
 
 | Ferramenta | Versão mínima | Verificar |
 |---|---|---|
@@ -92,7 +140,7 @@ Para **gerar instaladores nativos** (perfis `deb` e `windows`) são necessários
 
 ---
 
-## 5. Como Compilar e Executar
+## 6. Como Compilar e Executar
 
 ### Clonar o repositório
 
@@ -141,7 +189,7 @@ mvn javafx:run -Dapp.debug=true
 
 ---
 
-## 6. Gerando Instaladores Nativos
+## 7. Gerando Instaladores Nativos
 
 O projeto usa o plugin `jpackage-maven-plugin` para empacotar o aplicativo com uma runtime Java embutida. Os instaladores são salvos em `dist/`.
 
@@ -170,7 +218,7 @@ Gera: `dist/AssinaLegis-<versão>.msi`
 
 ---
 
-## 7. Estrutura do Projeto
+## 8. Estrutura do Projeto
 
 ```
 assinalegis/
@@ -211,7 +259,7 @@ assinalegis/
 
 ---
 
-## 8. Arquitetura e Tecnologias
+## 9. Arquitetura e Tecnologias
 
 ### Stack tecnológico
 
@@ -274,7 +322,7 @@ AssinaturaService.assinarDocumentos()
 
 ---
 
-## 9. Detalhes Técnicos Avançados
+## 10. Detalhes Técnicos Avançados
 
 Esta seção destina-se a desenvolvedores que precisam contribuir com ou manter o código.
 
@@ -340,7 +388,7 @@ O diretório `.github/instructions/` contém arquivos de instrução detalhados 
 
 ---
 
-## 10. Licença
+## 11. Licença
 
 Este projeto está licenciado sob a **GNU General Public License v3.0 (GPL-3.0)**.
 Consulte o arquivo [`LICENSE`](LICENSE) para mais detalhes.
