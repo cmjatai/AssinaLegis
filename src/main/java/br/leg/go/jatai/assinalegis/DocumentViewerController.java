@@ -32,6 +32,7 @@ import javafx.scene.image.ImageView;
 import javafx.scene.image.WritableImage;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
@@ -748,25 +749,32 @@ public class DocumentViewerController {
                             headerLabel.setWrapText(true);
                             headerLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(65));
 
-                            Button removeButton = new Button("Remover");
-                            removeButton.setOnAction(event -> {
-                                removeFileItem(fileItem);
-                                event.consume();
-                            });
-
-                            headerHBox.getChildren().addAll(checkBox, headerLabel, removeButton);
+                            headerHBox.getChildren().addAll(checkBox, headerLabel);
 
                             VBox detailsVBox = new VBox(2);
                             detailsVBox.setPadding(new Insets(0, 0, 0, 0));
 
                             Label origemLabel = new Label("Origem: " + fileItem.getSourceFile().getAbsolutePath());
                             origemLabel.setWrapText(true);
-                            origemLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(65));
+                            origemLabel.setMinWidth(0);
+                            origemLabel.setMaxWidth(Double.MAX_VALUE);
+                            origemLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(150));
                             origemLabel.styleProperty().bind(
                                 javafx.beans.binding.Bindings.when(selectedProperty())
                                     .then("-fx-font-size: 11px; -fx-text-fill: -fx-selection-bar-text;")
                                     .otherwise("-fx-font-size: 11px; -fx-text-fill: #555555;")
                             );
+
+                            Button removeButton = new Button("Remover");
+                            removeButton.setOnAction(event -> {
+                                removeFileItem(fileItem);
+                                event.consume();
+                            });
+
+                            HBox origemHBox = new HBox(8);
+                            origemHBox.setAlignment(Pos.CENTER_LEFT);
+                            HBox.setHgrow(origemLabel, Priority.ALWAYS);
+                            origemHBox.getChildren().addAll(origemLabel, removeButton);
 
                             Label descLabel = new Label(item.getDescription());
                             descLabel.setWrapText(true);
@@ -777,7 +785,7 @@ public class DocumentViewerController {
                                     .otherwise("-fx-text-fill: #666666;")
                             );
 
-                            detailsVBox.getChildren().addAll(origemLabel, descLabel);
+                            detailsVBox.getChildren().addAll(origemHBox, descLabel);
                             mainVBox.getChildren().add(headerHBox);
                             mainVBox.getChildren().add(detailsVBox);
                         }
