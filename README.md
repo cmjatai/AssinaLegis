@@ -55,7 +55,7 @@ Na primeira execução, acesse **Arquivo → Configurações** e preencha:
 
 | Campo | Descrição | Exemplo |
 |---|---|---|
-| **URL da API** | Endereço do backend Django | `https://sistema.jatai.go.leg.br` |
+| **URL da API** | Endereço do backend Django | `https://sapl.jatai.go.leg.br` |
 | **Token de Acesso** | Token DRF gerado na conta do usuário | `9944b09199c62bcf...` |
 | **Certificado Digital** | Caminho para o arquivo `.pfx` ou `.p12` (certificado A1) | `/home/usuario/cert.pfx` |
 | **Senha do Certificado** | Senha do arquivo PFX/P12 | — |
