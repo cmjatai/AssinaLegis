@@ -42,6 +42,24 @@ public class ConfigService {
         }
     }
 
+    /** Construtor para uso exclusivo em testes — usa Preferences isolado sem chamar a API. */
+    ConfigService(Preferences testPrefs) {
+        this.prefs = testPrefs;
+        this.mapper = new ObjectMapper();
+        loadDebugMode();
+        // intencionalmente não chama updateCasaLegislativa()
+    }
+
+    /** Substitui o singleton para uso em testes. Nunca chamar em código de produção. */
+    static synchronized void resetForTest(Preferences testPrefs) {
+        instance = new ConfigService(testPrefs);
+    }
+
+    /** Limpa o singleton após os testes. Nunca chamar em código de produção. */
+    static synchronized void clearInstanceForTest() {
+        instance = null;
+    }
+
     private void loadDebugMode() {
         // Verifica propriedade do sistema primeiro (útil para debug na IDE)
         String systemDebug = System.getProperty("app.debug");
