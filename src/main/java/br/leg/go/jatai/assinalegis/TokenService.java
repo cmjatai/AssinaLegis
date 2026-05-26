@@ -77,7 +77,8 @@ public class TokenService {
         throw new RuntimeException("Nenhuma biblioteca PKCS#11 conseguiu abrir o token.", lastException);
     }
 
-    private boolean isPinError(Throwable e) {
+    // Package-private para testes de unidade (mesmo pacote/módulo)
+    boolean isPinError(Throwable e) {
         while (e != null) {
             String msg = e.getMessage();
             if (msg != null && (msg.contains("CKR_PIN_INCORRECT")
