@@ -43,6 +43,9 @@ import java.util.regex.Pattern;
 
 public class AssinaturaService {
 
+    /** Fator de escala para converter coordenadas do viewer (200 DPI) para o PDFBox (72 DPI). */
+    static final double SCALE_FACTOR_PDF = 72.0 / 200.0;
+
     /**
      * Assina uma lista de DocumentItems.
      *
@@ -63,20 +66,7 @@ public class AssinaturaService {
         }
 
         // Extrai o nome do assinante (CN) do certificado
-        String nomeAssinante = "";
-        try {
-            X509Certificate x509Cert = (X509Certificate) certificateChain[0];
-            String subjectDN = x509Cert.getSubjectX500Principal().getName();
-            javax.naming.ldap.LdapName ln = new javax.naming.ldap.LdapName(subjectDN);
-            for (javax.naming.ldap.Rdn rdn : ln.getRdns()) {
-                if (rdn.getType().equalsIgnoreCase("CN")) {
-                    nomeAssinante = rdn.getValue().toString();
-                    break;
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        String nomeAssinante = extrairCN((X509Certificate) certificateChain[0]);
 
         // Inverte a lista para assinar na ordem correta (se necessário)
         List<DocumentItem> itensInvertidos = new ArrayList<>(itens);
@@ -144,7 +134,7 @@ public class AssinaturaService {
 
                     // Converte coordenadas do JavaFX (origem top-left) para PDF
                     // Precisamos considerar que o PDFBox usa 72 DPI por padrão e o viewer usa 200 DPI
-                    double scaleFactor = 72.0 / 200.0;
+                    double scaleFactor = SCALE_FACTOR_PDF;
 
                     x = (float) (rect.getX() * scaleFactor);
                     width = (float) (rect.getWidth() * scaleFactor);
@@ -259,6 +249,27 @@ public class AssinaturaService {
                 }
             }
         }
+    }
+
+    /**
+     * Extrai o atributo CN (Common Name) do subject de um certificado X.509.
+     *
+     * @param cert certificado X.509
+     * @return o valor do CN, ou string vazia se não encontrado
+     */
+    static String extrairCN(X509Certificate cert) {
+        try {
+            String subjectDN = cert.getSubjectX500Principal().getName();
+            javax.naming.ldap.LdapName ln = new javax.naming.ldap.LdapName(subjectDN);
+            for (javax.naming.ldap.Rdn rdn : ln.getRdns()) {
+                if (rdn.getType().equalsIgnoreCase("CN")) {
+                    return rdn.getValue().toString();
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return "";
     }
 
     private String slugify(String input) {
