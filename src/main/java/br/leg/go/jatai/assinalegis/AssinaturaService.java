@@ -98,7 +98,10 @@ public class AssinaturaService {
                 signature.setSubFilter(PDSignature.SUBFILTER_ADBE_PKCS7_DETACHED);
                 signature.setName("AssinaLegis");
 
-                JsonNode casa = ConfigService.getInstance().getCasaLegislativa(JsonNode.class);
+                ConfigService configService = ConfigService.getInstance();
+                JsonNode casa = configService.getToken() != null && !configService.getToken().isBlank()
+                        ? configService.getCasaLegislativa(JsonNode.class)
+                        : null;
                 if (casa != null && casa.has("nome")) {
                     signature.setLocation(casa.get("nome").asText());
                 } else {
@@ -299,6 +302,7 @@ public class AssinaturaService {
         g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
         ConfigService configService = ConfigService.getInstance();
+        boolean usuarioAutenticado = configService.getToken() != null && !configService.getToken().isBlank();
         String bgColorHex = configService.getSignatureBgColor();
         Color bgColor = Color.decode(bgColorHex);
 
@@ -324,11 +328,17 @@ public class AssinaturaService {
         // Restaura o clip original
         g2d.setClip(oldClip);
 
+        // Borda arredondada com a mesma cor do nome configurado.
+        Color borderColor = new Color(nameColor.getRed(), nameColor.getGreen(), nameColor.getBlue(), 255);
+        g2d.setColor(borderColor);
+        g2d.setStroke(new BasicStroke(4f));
+        g2d.draw(roundedRect);
+
         // Ícone alinhado à direita
         BufferedImage icon = null;
 
-        // Tenta carregar do logotipo da casa (URL)
-        if (casa != null && casa.has("logotipo") && !casa.get("logotipo").isNull() && !casa.get("logotipo").asText().equals("null")) {
+        // Se houver usuário autenticado, tenta carregar o logotipo da casa (URL)
+        if (usuarioAutenticado && casa != null && casa.has("logotipo") && !casa.get("logotipo").isNull() && !casa.get("logotipo").asText().equals("null")) {
             String logoUrl = casa.get("logotipo").asText();
             if (logoUrl != null && !logoUrl.isEmpty()) {
                 try {
@@ -343,27 +353,30 @@ public class AssinaturaService {
 
         g2d.setColor(Color.WHITE);
 
-        String nomeCasa = "Câmara Municipal";
-        if (casa != null && casa.has("nome")) {
-            nomeCasa = casa.get("nome").asText();
-        }
-        // Calcula tamanho da fonte para não ultrapassar 65% da largura
-        int maxTextWidth = (int) (width * 0.65);
-        int fontSize = height / 3; // Começa com um tamanho razoável
-        Font font = new Font(fontName, Font.BOLD, fontSize);
-        g2d.setColor(nameColor);
-        g2d.setFont(font);
-        FontMetrics fm = g2d.getFontMetrics();
+        int maxTextWidth;
+        int fontSize;
+        Font font;
+        FontMetrics fm;
 
-        while (fm.stringWidth(nomeCasa) > maxTextWidth && fontSize > 5) {
-            fontSize--;
+        if (usuarioAutenticado && casa != null && casa.has("nome")) {
+            String nomeCasa = casa.get("nome").asText();
+            maxTextWidth = (int) (width * 0.65);
+            fontSize = height / 3;
             font = new Font(fontName, Font.BOLD, fontSize);
+            g2d.setColor(nameColor);
             g2d.setFont(font);
             fm = g2d.getFontMetrics();
+
+            while (fm.stringWidth(nomeCasa) > maxTextWidth && fontSize > 5) {
+                fontSize--;
+                font = new Font(fontName, Font.BOLD, fontSize);
+                g2d.setFont(font);
+                fm = g2d.getFontMetrics();
+            }
+
+            int xNomeCasa = (int) (width) - fm.stringWidth(nomeCasa) - 10;
+            g2d.drawString(nomeCasa, xNomeCasa, fm.getAscent());
         }
-        // Desenha o nome da casa (Canto Superior Direito da área de texto)
-        int xNomeCasa = (int) (width) - fm.stringWidth(nomeCasa) - 10;
-        g2d.drawString(nomeCasa, xNomeCasa, fm.getAscent());
 
 
         g2d.setColor(nameColor);
@@ -417,6 +430,17 @@ public class AssinaturaService {
         hfm = fm.getHeight();
         g2d.drawString(data, 20, (int)(height-hfm/2.4));
 
+
+        // Em modo não autenticado, usa diretamente o ícone padrão local.
+        if (!usuarioAutenticado) {
+            try (InputStream is = App.class.getResourceAsStream("/icon.png")) {
+                if (is != null) {
+                    icon = ImageIO.read(is);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
 
         // Fallback para o ícone padrão se não conseguiu carregar o logotipo
         if (icon == null) {
