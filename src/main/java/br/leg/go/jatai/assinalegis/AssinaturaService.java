@@ -288,10 +288,13 @@ public class AssinaturaService {
 
 
     private BufferedImage createSignatureImage(float widthPoints, float heightPoints, JsonNode casa, String nomeAssinante) throws IOException {
-        // Converte pontos para pixels (assumindo 300 DPI para boa qualidade)
+        // Renderiza em alta resolução e reduz no final para melhorar nitidez de textos e ícones.
         int dpi = 300;
-        int width = Math.round(widthPoints / 72f * dpi);
-        int height = Math.round(heightPoints / 72f * dpi);
+        int targetWidth = Math.round(widthPoints / 72f * dpi);
+        int targetHeight = Math.round(heightPoints / 72f * dpi);
+        double renderScale = 2.0;
+        int width = Math.max(1, (int) Math.round(targetWidth * renderScale));
+        int height = Math.max(1, (int) Math.round(targetHeight * renderScale));
 
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2d = image.createGraphics();
@@ -314,7 +317,7 @@ public class AssinaturaService {
 
         // Fundo azul (0, 100, 170) com bordas arredondadas
         g2d.setColor(bgColor);
-        int arc = 40;
+        int arc = Math.max(1, (int) Math.round(40 * renderScale));
         java.awt.geom.RoundRectangle2D roundedRect = new java.awt.geom.RoundRectangle2D.Float(0, 0, width, height, arc, arc);
         g2d.fill(roundedRect);
 
@@ -329,10 +332,10 @@ public class AssinaturaService {
         g2d.setClip(oldClip);
 
         // Borda arredondada com a mesma cor do nome configurado.
-        Color borderColor = new Color(nameColor.getRed(), nameColor.getGreen(), nameColor.getBlue(), 255);
-        g2d.setColor(borderColor);
-        g2d.setStroke(new BasicStroke(4f));
-        g2d.draw(roundedRect);
+        // Color borderColor = new Color(nameColor.getRed(), nameColor.getGreen(), nameColor.getBlue(), 255);
+        // g2d.setColor(borderColor);
+        // g2d.setStroke(new BasicStroke((float) (4f * renderScale)));
+        // g2d.draw(roundedRect);
 
         // Ícone alinhado à direita
         BufferedImage icon = null;
@@ -374,7 +377,7 @@ public class AssinaturaService {
                 fm = g2d.getFontMetrics();
             }
 
-            int xNomeCasa = (int) (width) - fm.stringWidth(nomeCasa) - 10;
+            int xNomeCasa = (int) (width) - fm.stringWidth(nomeCasa) - (int) Math.round(10 * renderScale);
             g2d.drawString(nomeCasa, xNomeCasa, fm.getAscent());
         }
 
@@ -400,7 +403,7 @@ public class AssinaturaService {
         }
         // Centralizado na vertical
         int yText = (int)(height / 2 - fm.getHeight()*1.3) + fm.getAscent();
-        g2d.drawString(nomeAssinante, 10, yText);
+        g2d.drawString(nomeAssinante, (int) Math.round(10 * renderScale), yText);
 
 
         String dataHora = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm"));
@@ -410,30 +413,30 @@ public class AssinaturaService {
         g2d.setFont(dateFont);
         FontMetrics dateFm = g2d.getFontMetrics();
         yText = (int)(height + dateFm.getHeight()) / 2;
-        g2d.drawString(dataHora, 40, yText);
+        g2d.drawString(dataHora, (int) Math.round(40 * renderScale), yText);
 
 
         g2d.setColor(dateColor);
-        font = new Font(fontName, Font.BOLD, 20);
+        font = new Font(fontName, Font.BOLD, (int) Math.round(20 * renderScale));
         g2d.setFont(font);
         fm = g2d.getFontMetrics();
         String data = "ASSINATURA QUALIFICADA ICP-BRASIL";
         int hfm = fm.getHeight();
-        g2d.drawString(data, 20, (int)(height*0.68)+hfm);
+        g2d.drawString(data, (int) Math.round(20 * renderScale), (int)(height*0.68)+hfm);
 
 
         g2d.setColor(nameColor);
-        font = new Font(fontName, Font.BOLD, 20);
+        font = new Font(fontName, Font.BOLD, (int) Math.round(20 * renderScale));
         g2d.setFont(font);
         fm = g2d.getFontMetrics();
         data = "Validação disponível em: https://validar.iti.gov.br";
         hfm = fm.getHeight();
-        g2d.drawString(data, 20, (int)(height-hfm/2.4));
+        g2d.drawString(data, (int) Math.round(20 * renderScale), (int)(height-hfm/2.4));
 
 
         // Em modo não autenticado, usa diretamente o ícone padrão local.
         if (!usuarioAutenticado) {
-            try (InputStream is = App.class.getResourceAsStream("/icon.png")) {
+            try (InputStream is = App.class.getResourceAsStream("/icon_logo_transparent.png")) {
                 if (is != null) {
                     icon = ImageIO.read(is);
                 }
@@ -444,7 +447,7 @@ public class AssinaturaService {
 
         // Fallback para o ícone padrão se não conseguiu carregar o logotipo
         if (icon == null) {
-            try (InputStream is = App.class.getResourceAsStream("/icon.png")) {
+            try (InputStream is = App.class.getResourceAsStream("/icon_logo_transparent.png")) {
                 if (is != null) {
                     icon = ImageIO.read(is);
                 }
@@ -468,18 +471,30 @@ public class AssinaturaService {
             int iconHeight = (int) (icon.getHeight() * scale);
 
             // Centralizado na vertical
-            int yPos = (height - iconHeight) - 10;
+            int yPos = (height - iconHeight) - (int) Math.round(10 * renderScale);
 
             // Centralizado horizontalmente na área dos 30% à direita
             int areaWidth = (int) (width * 0.3);
-            int areaStart = (int) (width - areaWidth - 10); // margem direita de 10 pixels
+            int areaStart = (int) (width - areaWidth - Math.round(10 * renderScale)); // margem direita de 10 pixels
             int xPos = areaStart + (areaWidth - iconWidth);
 
             g2d.drawImage(icon, xPos, yPos, iconWidth, iconHeight, null);
         }
 
         g2d.dispose();
-        return image;
+        return resizeImage(image, targetWidth, targetHeight);
+    }
+
+    private BufferedImage resizeImage(BufferedImage source, int targetWidth, int targetHeight) {
+        BufferedImage resized = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2d = resized.createGraphics();
+        g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2d.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+        g2d.drawImage(source, 0, 0, targetWidth, targetHeight, null);
+        g2d.dispose();
+        return resized;
     }
 
     private void drawRotatedGradient(Graphics2D g2d, java.awt.Rectangle rect, double rotationDegrees, int maxAlpha) {

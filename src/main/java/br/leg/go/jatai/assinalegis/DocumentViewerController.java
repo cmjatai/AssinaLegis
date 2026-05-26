@@ -108,10 +108,15 @@ public class DocumentViewerController {
     private ConfigService configService;
     private boolean isUpdatingSelectAll = false;
     private ViewMode currentMode = ViewMode.M1;
+    private ConfigService.ConfigObserver authStateObserver;
+    private boolean ultimoEstadoTokenConfigurado;
 
     @FXML
     public void initialize() {
         configService = ConfigService.getInstance();
+        authStateObserver = this::onConfigChanged;
+        configService.addObserver(authStateObserver);
+        ultimoEstadoTokenConfigurado = hasTokenConfigurado();
 
         if (chkSelectAll != null) {
             chkSelectAll.setAllowIndeterminate(true);
@@ -122,8 +127,54 @@ public class DocumentViewerController {
 
         initializeDocumentList();
         setupViewer();
-        switchMode(ViewMode.M1);
+        if (hasTokenConfigurado()) {
+            switchMode(ViewMode.M1);
+        } else {
+            switchMode(ViewMode.M2);
+            log("Modo M1 indisponível: nenhum token armazenado.\n");
+        }
         updateNavigationButtons();
+    }
+
+    private void onConfigChanged(String key, Object newValue) {
+        if (!ConfigService.KEY_TOKEN.equals(key)) {
+            return;
+        }
+
+        Platform.runLater(this::processAuthStateChange);
+    }
+
+    private void processAuthStateChange() {
+        boolean tokenConfigurado = hasTokenConfigurado();
+        boolean houveLogin = !ultimoEstadoTokenConfigurado && tokenConfigurado;
+        boolean houveLogout = ultimoEstadoTokenConfigurado && !tokenConfigurado;
+        ultimoEstadoTokenConfigurado = tokenConfigurado;
+
+        if (houveLogout && currentMode == ViewMode.M2) {
+            clearPreview();
+            clearItemsAndDocuments();
+            log("Logout realizado. Lista de documentos limpa.\n");
+        }
+
+        if (houveLogout && currentMode == ViewMode.M1) {
+            switchMode(ViewMode.M2);
+            log("Token removido. Alternando para M2.\n");
+            return;
+        }
+
+        if (houveLogin) {
+            switchMode(ViewMode.M1);
+            log("Login realizado. Alternando para M1.\n");
+            return;
+        }
+
+        applyModeVisualState();
+
+        if (tokenConfigurado) {
+            log("Token configurado. M1 disponível para ativação.\n");
+        } else {
+            log("M1 indisponível: nenhum token armazenado.\n");
+        }
     }
 
     public void setLogAction(Consumer<String> logAction) {
@@ -138,6 +189,15 @@ public class DocumentViewerController {
 
     @FXML
     private void onSwitchToM1() {
+        if (!hasTokenConfigurado()) {
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("Token não configurado");
+            alert.setHeaderText(null);
+            alert.setContentText("Para usar o modo M1, configure um token de autenticação.");
+            alert.showAndWait();
+            switchMode(ViewMode.M2);
+            return;
+        }
         switchMode(ViewMode.M1);
     }
 
@@ -147,6 +207,10 @@ public class DocumentViewerController {
     }
 
     private void switchMode(ViewMode mode) {
+        if (mode == ViewMode.M1 && !hasTokenConfigurado()) {
+            mode = ViewMode.M2;
+        }
+
         currentMode = mode;
         applyModeVisualState();
         clearPreview();
@@ -163,6 +227,7 @@ public class DocumentViewerController {
 
     private void applyModeVisualState() {
         boolean m1 = currentMode == ViewMode.M1;
+        boolean tokenConfigurado = hasTokenConfigurado();
 
         if (hBoxM1Controls != null) {
             hBoxM1Controls.setVisible(m1);
@@ -174,13 +239,18 @@ public class DocumentViewerController {
         }
 
         if (btnModeM1 != null) {
-            btnModeM1.setDisable(m1);
+            btnModeM1.setDisable(m1 || !tokenConfigurado);
         }
         if (btnModeM2 != null) {
             btnModeM2.setDisable(!m1);
         }
 
         updateSelectAllState();
+    }
+
+    private boolean hasTokenConfigurado() {
+        String token = configService != null ? configService.getToken() : null;
+        return token != null && !token.isBlank();
     }
 
     private void setupViewer() {
