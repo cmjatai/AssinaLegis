@@ -11,7 +11,7 @@
 ![Maven](https://img.shields.io/badge/build-Maven-red?logo=apachemaven)
 ![License](https://img.shields.io/badge/license-GPL--3.0-green)
 
-O AssinaLegis permite ao servidor público visualizar documentos PDF obtidos diretamente do sistema de gestão legislativa, posicionar visualmente a assinatura na página desejada e assinar com certificado A1 (arquivo PFX/P12) ou A3 (token/smartcard), devolvendo o documento assinado à API automaticamente.
+O AssinaLegis permite ao servidor público visualizar documentos PDF obtidos diretamente do (SAPL)[https://github.com/interlegis/sapl], posicionar visualmente a assinatura na página desejada e assinar com certificado A1 (arquivo PFX/P12) ou A3 (token/smartcard), devolvendo o documento assinado à API automaticamente.
 
 ---
 
