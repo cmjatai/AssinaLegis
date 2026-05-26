@@ -5,8 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.prefs.Preferences;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -215,6 +218,121 @@ class ConfigServiceTest {
             if (anterior != null) {
                 System.setProperty("app.debug", anterior);
             }
+        }
+    }
+
+    // =========================================================================
+    // Nível 3 — Observer Pattern
+    // =========================================================================
+
+    @Nested
+    @DisplayName("Nível 3 — ConfigService: Observer Pattern")
+    class ObserverTest {
+
+        /** Registro imutável de uma chamada ao observer. */
+        record Chamada(String chave, Object valor) {}
+
+        @Test
+        @DisplayName("Observer recebe KEY_TOKEN e valor correto ao chamar setToken")
+        void observerRecebeNotificacaoDeToken() {
+            List<Chamada> chamadas = new ArrayList<>();
+            service.addObserver((key, val) -> chamadas.add(new Chamada(key, val)));
+
+            service.setToken("novo-token");
+
+            assertEquals(1, chamadas.size());
+            assertEquals(ConfigService.KEY_TOKEN, chamadas.get(0).chave());
+            assertEquals("novo-token", chamadas.get(0).valor());
+        }
+
+        @Test
+        @DisplayName("Observer recebe KEY_CASA ao chamar setCasaLegislativa")
+        void observerRecebeNotificacaoDeCasaLegislativa() throws Exception {
+            List<Chamada> chamadas = new ArrayList<>();
+            service.addObserver((key, val) -> chamadas.add(new Chamada(key, val)));
+
+            JsonNode casa = new ObjectMapper().readTree("{\"nome\":\"CMJ\"}");
+            service.setCasaLegislativa(casa);
+
+            assertEquals(1, chamadas.size());
+            assertEquals(ConfigService.KEY_CASA, chamadas.get(0).chave());
+        }
+
+        @Test
+        @DisplayName("Após removeObserver, nenhuma notificação é recebida")
+        void aposRemoveObserverNaoRecebeNotificacao() {
+            List<Chamada> chamadas = new ArrayList<>();
+            ConfigService.ConfigObserver obs = (key, val) -> chamadas.add(new Chamada(key, val));
+
+            service.addObserver(obs);
+            service.setToken("antes");
+            assertEquals(1, chamadas.size());
+
+            service.removeObserver(obs);
+            service.setToken("depois");
+
+            assertEquals(1, chamadas.size(), "Não deve receber notificação após remoção");
+        }
+
+        @Test
+        @DisplayName("Múltiplos observers são notificados de forma independente")
+        void multiplosObserversSaoNotificadosIndependentemente() {
+            List<String> obs1 = new ArrayList<>();
+            List<String> obs2 = new ArrayList<>();
+
+            service.addObserver((key, val) -> obs1.add(key));
+            service.addObserver((key, val) -> obs2.add(key));
+
+            service.setToken("token-teste");
+
+            assertEquals(1, obs1.size());
+            assertEquals(1, obs2.size());
+        }
+
+        @Test
+        @DisplayName("Observer recebe todos os valores em sequência ao alterar token múltiplas vezes")
+        void observerRecebeValoresEmSequencia() {
+            List<String> tokens = new ArrayList<>();
+            service.addObserver((key, val) -> {
+                if (ConfigService.KEY_TOKEN.equals(key)) tokens.add((String) val);
+            });
+
+            service.setToken("token-1");
+            service.setToken("token-2");
+            service.setToken("token-3");
+
+            assertEquals(List.of("token-1", "token-2", "token-3"), tokens);
+        }
+
+        @Test
+        @DisplayName("Remover observer não afeta outros observers registrados")
+        void removerUmObserverNaoAfetaOutros() {
+            List<String> obs1 = new ArrayList<>();
+            List<String> obs2 = new ArrayList<>();
+
+            ConfigService.ConfigObserver primeiro = (key, val) -> obs1.add(key);
+            service.addObserver(primeiro);
+            service.addObserver((key, val) -> obs2.add(key));
+
+            service.removeObserver(primeiro);
+            service.setToken("token-apos-remocao");
+
+            assertTrue(obs1.isEmpty(), "Observer removido não deve ser notificado");
+            assertEquals(1, obs2.size(), "Observer ativo deve continuar recebendo notificações");
+        }
+
+        @Test
+        @DisplayName("setUrl não dispara notificação síncrona para observers")
+        void setUrlNaoNotificaObserversDiretamente() throws InterruptedException {
+            List<String> chaves = new ArrayList<>();
+            service.addObserver((key, val) -> chaves.add(key));
+
+            // setUrl só notifica via thread de API (assíncrona e silenciosa sem backend)
+            service.setUrl("http://backend-inexistente");
+
+            // Verifica imediatamente — não deve haver notificação síncrona de KEY_URL
+            assertFalse(chaves.contains("url"),
+                    "setUrl não deve notificar observers com a chave 'url' de forma síncrona");
         }
     }
 }
