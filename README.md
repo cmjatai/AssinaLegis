@@ -4,14 +4,14 @@
   <img src="src/main/resources/icon.png" alt="AssinaLegis" width="256"/>
 </p>
 
-> Aplicativo desktop para **assinatura digital de documentos PDF** segundo o padrão ICP-Brasil, desenvolvido pela [Câmara Municipal de Jataí](https://www.jatai.go.leg.br) — GO.
+> Aplicativo desktop para **assinatura digital de documentos PDF** segundo o padrão ICP-Brasil, desenvolvido pela [Câmara Municipal de Jataí-GO](https://www.jatai.go.leg.br) para o [SAPL/Interlegis](https://github.com/interlegis/sapl), para o Brasil.
 
 ![Java](https://img.shields.io/badge/Java-21-blue?logo=openjdk)
 ![JavaFX](https://img.shields.io/badge/JavaFX-21-orange)
 ![Maven](https://img.shields.io/badge/build-Maven-red?logo=apachemaven)
 ![License](https://img.shields.io/badge/license-GPL--3.0-green)
 
-O AssinaLegis permite ao servidor público visualizar documentos PDF obtidos diretamente do (SAPL)[https://github.com/interlegis/sapl], posicionar visualmente a assinatura na página desejada e assinar com certificado A1 (arquivo PFX/P12) ou A3 (token/smartcard), devolvendo o documento assinado à API automaticamente.
+O AssinaLegis permite ao servidor público visualizar documentos PDF obtidos diretamente do [SAPL](https://github.com/interlegis/sapl), posicionar visualmente a assinatura na página desejada e assinar com certificado A1 (arquivo PFX/P12) ou A3 (token/smartcard), devolvendo o documento assinado à API automaticamente.
 
 ---
 
