@@ -1,7 +1,11 @@
 package br.leg.go.jatai.assinalegis;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import javafx.application.Platform;
+import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.DoubleProperty;
+import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleDoubleProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -10,7 +14,20 @@ import javafx.fxml.FXML;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Group;
-import javafx.scene.control.*;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.Dialog;
+import javafx.scene.control.Hyperlink;
+import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.ListView;
+import javafx.scene.control.PasswordField;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.SelectionMode;
+import javafx.scene.control.Tooltip;
 import javafx.scene.image.ImageView;
 import javafx.scene.image.WritableImage;
 import javafx.scene.layout.HBox;
@@ -20,36 +37,50 @@ import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.transform.Scale;
+import javafx.stage.DirectoryChooser;
+import javafx.stage.FileChooser;
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
+import java.nio.file.Files;
+import java.security.KeyStore;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
-import java.util.List;
-import java.util.Optional;
-import java.util.Enumeration;
-import java.io.File;
-import java.io.FileInputStream;
-import java.security.KeyStore;
-import javafx.stage.FileChooser;
 
 public class DocumentViewerController {
 
-    @FXML private ListView<DocumentItem> documentListView;
+    private enum ViewMode {
+        M1,
+        M2
+    }
+
+    @FXML private ListView<SignableItem> documentListView;
     @FXML private ScrollPane scrollPane;
     @FXML private StackPane contentHolder;
     @FXML private CheckBox chkSelectAll;
+    @FXML private CheckBox chkSelectAllM2;
+
+    @FXML private Button btnModeM1;
+    @FXML private Button btnModeM2;
+    @FXML private HBox hBoxM1Controls;
+    @FXML private HBox hBoxM2Controls;
 
     @FXML private Button btnFirstPage;
     @FXML private Button btnPrevPage;
@@ -76,16 +107,22 @@ public class DocumentViewerController {
 
     private ConfigService configService;
     private boolean isUpdatingSelectAll = false;
+    private ViewMode currentMode = ViewMode.M1;
 
     @FXML
     public void initialize() {
         configService = ConfigService.getInstance();
+
         if (chkSelectAll != null) {
             chkSelectAll.setAllowIndeterminate(true);
         }
+        if (chkSelectAllM2 != null) {
+            chkSelectAllM2.setAllowIndeterminate(true);
+        }
+
         initializeDocumentList();
         setupViewer();
-        onRefreshDocuments();
+        switchMode(ViewMode.M1);
         updateNavigationButtons();
     }
 
@@ -97,6 +134,53 @@ public class DocumentViewerController {
         if (logAction != null) {
             Platform.runLater(() -> logAction.accept(message));
         }
+    }
+
+    @FXML
+    private void onSwitchToM1() {
+        switchMode(ViewMode.M1);
+    }
+
+    @FXML
+    private void onSwitchToM2() {
+        switchMode(ViewMode.M2);
+    }
+
+    private void switchMode(ViewMode mode) {
+        currentMode = mode;
+        applyModeVisualState();
+        clearPreview();
+        clearItemsAndDocuments();
+
+        if (currentMode == ViewMode.M1) {
+            refreshDocumentList();
+            log("Modo M1 ativo: lista carregada da API.\n");
+        } else {
+            updateSelectAllState();
+            log("Modo M2 ativo: carregue PDFs locais para assinar.\n");
+        }
+    }
+
+    private void applyModeVisualState() {
+        boolean m1 = currentMode == ViewMode.M1;
+
+        if (hBoxM1Controls != null) {
+            hBoxM1Controls.setVisible(m1);
+            hBoxM1Controls.setManaged(m1);
+        }
+        if (hBoxM2Controls != null) {
+            hBoxM2Controls.setVisible(!m1);
+            hBoxM2Controls.setManaged(!m1);
+        }
+
+        if (btnModeM1 != null) {
+            btnModeM1.setDisable(m1);
+        }
+        if (btnModeM2 != null) {
+            btnModeM2.setDisable(!m1);
+        }
+
+        updateSelectAllState();
     }
 
     private void setupViewer() {
@@ -116,7 +200,6 @@ public class DocumentViewerController {
 
         imageWrapper = new Pane(group);
 
-        // Bind das dimensões do wrapper ao tamanho escalado da imagem
         imageWrapper.minWidthProperty().bind(javafx.beans.binding.Bindings.createDoubleBinding(
             () -> imageView.getImage() != null ? imageView.getImage().getWidth() * zoomProperty.get() : 0.0,
             zoomProperty, imageView.imageProperty()));
@@ -129,11 +212,9 @@ public class DocumentViewerController {
 
         contentHolder.getChildren().add(imageWrapper);
 
-        // Dimensões do retângulo em pixels (200 DPI)
         double rectWidth = (6.0 / 2.54) * 200;
         double rectHeight = (1.7 / 2.54) * 200;
 
-        // Eventos de Mouse no Group
         group.setOnMouseClicked(event -> {
             if (event.isControlDown()) {
                 if (event.getButton() == javafx.scene.input.MouseButton.PRIMARY) {
@@ -147,22 +228,17 @@ public class DocumentViewerController {
                     group.getChildren().remove(lastRect.get());
                 }
 
-                // recupera o documentItem selecionado
-                DocumentItem item = documentListView.getSelectionModel().getSelectedItem();
+                SignableItem item = documentListView.getSelectionModel().getSelectedItem();
                 if (item == null) {
                     log("Nenhum documento selecionado para adicionar a marcação.\n");
                     return;
                 }
-                // Verifica se o documento já foi enviado, desabilitando a marcação se for o caso
-                boolean isDisabled = false;
-                JsonNode jsonData = item.getJsonData();
-                if (jsonData.has("data_envio") && !jsonData.get("data_envio").isNull()) {
-                    isDisabled = true;
-                }
-                if (isDisabled) {
-                    log("O documento selecionado já foi enviado e não pode ser marcado.\n");
+
+                if (isItemDisabled(item)) {
+                    log("O documento selecionado não pode ser marcado.\n");
                     return;
                 }
+
                 Rectangle rect = new Rectangle(rectWidth, rectHeight);
                 rect.setFill(Color.rgb(0, 115, 183, 0.6));
                 rect.setStroke(Color.rgb(0, 115, 183, 1.0));
@@ -177,7 +253,6 @@ public class DocumentViewerController {
             }
         });
 
-        // Adiciona suporte a Zoom com Ctrl + Scroll no ScrollPane
         scrollPane.addEventFilter(javafx.scene.input.ScrollEvent.SCROLL, event -> {
             if (event.isControlDown()) {
                 double deltaY = event.getDeltaY();
@@ -197,9 +272,171 @@ public class DocumentViewerController {
 
     @FXML
     private void onRefreshDocuments() {
+        if (currentMode != ViewMode.M1) {
+            log("Atualização da API disponível apenas no modo M1.\n");
+            return;
+        }
+
         log("Atualizando lista de documentos...\n");
         clearPreview();
+        clearItemsAndDocuments();
         refreshDocumentList();
+    }
+
+    @FXML
+    private void onLoadLocalFiles() {
+        if (currentMode != ViewMode.M2) {
+            switchMode(ViewMode.M2);
+        }
+
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Selecionar arquivos PDF");
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Arquivos PDF", "*.pdf"));
+
+        List<File> arquivos = fileChooser.showOpenMultipleDialog(documentListView.getScene().getWindow());
+        if (arquivos == null || arquivos.isEmpty()) {
+            return;
+        }
+
+        clearPreview();
+        clearItemsAndDocuments();
+        log("Carregando " + arquivos.size() + " arquivo(s) local(is)...\n");
+
+        new Thread(() -> {
+            int carregados = 0;
+            for (File arquivo : arquivos) {
+                try {
+                    byte[] bytes = Files.readAllBytes(arquivo.toPath());
+                    PDDocument doc = Loader.loadPDF(bytes);
+
+                    FileItem item = new FileItem(arquivo.getName(), "Arquivo local", arquivo);
+                    item.setOriginalBytes(bytes);
+                    item.setPdDocument(doc);
+                    item.selectedProperty().addListener((obs, wasSelected, isSelected) -> updateSelectAllState());
+
+                    Platform.runLater(() -> documentListView.getItems().add(item));
+                    carregados++;
+                } catch (Exception e) {
+                    String erro = "Erro ao carregar '" + arquivo.getName() + "': " + e.getMessage() + "\n";
+                    Platform.runLater(() -> log(erro));
+                }
+            }
+
+            int totalCarregados = carregados;
+            Platform.runLater(() -> {
+                updateSelectAllState();
+                log("Arquivos locais carregados: " + totalCarregados + ".\n");
+            });
+        }).start();
+    }
+
+    @FXML
+    private void onSaveSignedFiles() {
+        if (currentMode != ViewMode.M2) {
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("Aviso");
+            alert.setHeaderText(null);
+            alert.setContentText("O salvamento local está disponível apenas no modo M2.");
+            alert.showAndWait();
+            return;
+        }
+
+        List<FileItem> itemsToSave = documentListView.getItems().stream()
+            .filter(item -> item instanceof FileItem)
+            .map(item -> (FileItem) item)
+            .filter(item -> item.getPdDocumentSigned() != null)
+            .collect(Collectors.toList());
+
+        if (itemsToSave.isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("Aviso");
+            alert.setHeaderText(null);
+            alert.setContentText("Não há arquivos assinados para salvar.");
+            alert.showAndWait();
+            return;
+        }
+
+        DirectoryChooser directoryChooser = new DirectoryChooser();
+        directoryChooser.setTitle("Selecionar pasta de destino");
+        File pastaDestino = directoryChooser.showDialog(documentListView.getScene().getWindow());
+        if (pastaDestino == null) {
+            return;
+        }
+
+        log("Salvando " + itemsToSave.size() + " arquivo(s) assinado(s)...\n");
+
+        new Thread(() -> {
+            int successCount = 0;
+
+            for (FileItem item : itemsToSave) {
+                try {
+                    byte[] pdfBytes = item.getSignedBytes();
+                    if (pdfBytes == null) {
+                        PDDocument signedDoc = item.getPdDocumentSigned();
+                        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                            signedDoc.save(baos);
+                            pdfBytes = baos.toByteArray();
+                        }
+                    }
+
+                    String nomeBase = removePdfExtension(item.getHeader());
+                    File arquivoDestino = new File(pastaDestino, nomeBase + "_assinado.pdf");
+
+                    try (FileOutputStream fos = new FileOutputStream(arquivoDestino)) {
+                        fos.write(pdfBytes);
+                    }
+
+                    successCount++;
+                    Platform.runLater(() -> log("Arquivo salvo: " + arquivoDestino.getName() + "\n"));
+                } catch (Exception e) {
+                    Platform.runLater(() -> log("Erro ao salvar '" + item.getHeader() + "': " + e.getMessage() + "\n"));
+                }
+            }
+
+            int total = successCount;
+            Platform.runLater(() -> {
+                Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                alert.setTitle("Salvamento concluído");
+                alert.setHeaderText(null);
+                alert.setContentText(total + " arquivo(s) salvo(s) com sucesso.");
+                alert.showAndWait();
+            });
+        }).start();
+    }
+
+    private String removePdfExtension(String fileName) {
+        if (fileName == null) {
+            return "arquivo";
+        }
+        String lower = fileName.toLowerCase();
+        if (lower.endsWith(".pdf")) {
+            return fileName.substring(0, fileName.length() - 4);
+        }
+        return fileName;
+    }
+
+    private void clearItemsAndDocuments() {
+        for (SignableItem item : documentListView.getItems()) {
+            closeDocumentIfNecessary(item.getPdDocument());
+            closeDocumentIfNecessary(item.getPdDocumentSigned());
+            item.setPdDocument(null);
+            item.setPdDocumentSigned(null);
+            item.setOriginalBytes(null);
+            item.setSignedBytes(null);
+        }
+        documentListView.getItems().clear();
+        updateSelectAllState();
+    }
+
+    private void closeDocumentIfNecessary(PDDocument document) {
+        if (document == null) {
+            return;
+        }
+
+        try {
+            document.close();
+        } catch (Exception ignored) {
+        }
     }
 
     private void clearPreview() {
@@ -214,7 +451,9 @@ public class DocumentViewerController {
         currentDocumentIsOwnedByItem = false;
 
         Platform.runLater(() -> {
-            if (imageView != null) imageView.setImage(null);
+            if (imageView != null) {
+                imageView.setImage(null);
+            }
             if (lastRect.get() != null && group != null) {
                 group.getChildren().remove(lastRect.get());
                 lastRect.set(null);
@@ -224,16 +463,13 @@ public class DocumentViewerController {
     }
 
     private void refreshDocumentList() {
+        ObservableList<SignableItem> items = documentListView.getItems();
 
-        ObservableList<DocumentItem> items = documentListView.getItems();
-        items.clear();
         new Thread(() -> {
             try {
                 Map<String, Object> params = new HashMap<>();
                 params.put("o", "-data_envio,-id");
                 params.put("page_size", 100);
-                //params.put("data_envio__isnull", "True");
-                //params.put("data_recebimento__isnull", "True");
                 params.put("expand", "autor");
                 InputStream response = ApiService.getInstance().get("materia", "proposicao", null, null, params);
 
@@ -241,7 +477,6 @@ public class DocumentViewerController {
                 JsonNode root = mapper.readTree(response);
 
                 Platform.runLater(() -> {
-
                     if (root.has("results") && root.get("results").isArray()) {
                         for (JsonNode node : root.get("results")) {
                             String header = node.has("__str__") ? node.get("__str__").asText() : "";
@@ -252,13 +487,11 @@ public class DocumentViewerController {
                                 preloadPdf(item);
                             }
 
-                            // Adiciona listener para atualizar o "Selecionar Todos" quando um item mudar
                             item.selectedProperty().addListener((obs, wasSelected, isSelected) -> updateSelectAllState());
-
                             items.add(item);
                         }
                     }
-                    updateSelectAllState(); // Atualiza estado inicial após carregar
+                    updateSelectAllState();
                     log("Lista de documentos atualizada com " + items.size() + " itens.\n");
                 });
 
@@ -270,7 +503,7 @@ public class DocumentViewerController {
     }
 
     private InputStream getInputStreamFromUrl(String urlString) throws IOException {
-        if (urlString != "null" && urlString != null && !urlString.isEmpty()) {
+        if (urlString != null && !urlString.isEmpty() && !"null".equals(urlString)) {
             URL url = java.net.URI.create(urlString).toURL();
             java.net.HttpURLConnection connection = (java.net.HttpURLConnection) url.openConnection();
             String token = configService.getToken();
@@ -278,24 +511,21 @@ public class DocumentViewerController {
                 connection.setRequestProperty("Authorization", "Token " + token);
             }
             return connection.getInputStream();
-        } else {
-            throw new IOException("URL inválida para obter InputStream: " + urlString);
         }
+        throw new IOException("URL inválida para obter InputStream: " + urlString);
     }
 
     private void preloadPdf(DocumentItem item) {
         JsonNode jsonNode = item.getJsonData();
         if (jsonNode.has("texto_original")) {
             String urlString = jsonNode.get("texto_original").asText();
-            if (urlString != "null" && urlString != null && !urlString.isEmpty()) {
+            if (urlString != null && !urlString.isEmpty() && !"null".equals(urlString)) {
                 new Thread(() -> {
-                    try {
-                        try (InputStream is = getInputStreamFromUrl(urlString)) {
-                            byte[] bytes = is.readAllBytes();
-                            item.setOriginalBytes(bytes);
-                            PDDocument doc = org.apache.pdfbox.Loader.loadPDF(bytes);
-                            item.setPdDocument(doc);
-                        }
+                    try (InputStream is = getInputStreamFromUrl(urlString)) {
+                        byte[] bytes = is.readAllBytes();
+                        item.setOriginalBytes(bytes);
+                        PDDocument doc = Loader.loadPDF(bytes);
+                        item.setPdDocument(doc);
                     } catch (Exception e) {
                         e.printStackTrace();
                         log("Erro ao pré-carregar PDF: " + e.getMessage() + "\n");
@@ -306,14 +536,14 @@ public class DocumentViewerController {
     }
 
     private void initializeDocumentList() {
-        ObservableList<DocumentItem> items = FXCollections.observableArrayList();
+        ObservableList<SignableItem> items = FXCollections.observableArrayList();
         documentListView.setItems(items);
         documentListView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
 
         documentListView.setCellFactory(param -> {
-            ListCell<DocumentItem> cell = new ListCell<DocumentItem>() {
+            ListCell<SignableItem> cell = new ListCell<>() {
                 @Override
-                protected void updateItem(DocumentItem item, boolean empty) {
+                protected void updateItem(SignableItem item, boolean empty) {
                     super.updateItem(item, empty);
 
                     if (empty || item == null) {
@@ -322,103 +552,139 @@ public class DocumentViewerController {
                     } else {
                         VBox mainVBox = new VBox(5);
 
-                        // HBox para CheckBox e Header
                         HBox headerHBox = new HBox(10);
                         headerHBox.setAlignment(Pos.CENTER_LEFT);
 
                         CheckBox checkBox = new CheckBox();
                         checkBox.selectedProperty().bindBidirectional(item.selectedProperty());
 
-                        // Desabilita o checkbox se data_envio não for nulo
-                        JsonNode jsonData = item.getJsonData();
-                        boolean hasDataEnvio = jsonData.has("data_envio") && !jsonData.get("data_envio").isNull();
-                        checkBox.setDisable(hasDataEnvio);
-                        if (hasDataEnvio) {
+                        boolean disabled = isItemDisabled(item);
+                        checkBox.setDisable(disabled);
+                        if (disabled) {
                             checkBox.setTooltip(new Tooltip("Este documento já foi enviado e não pode ser selecionado."));
                         }
 
-                        Hyperlink headerLink = new Hyperlink(item.getHeader());
-                        headerLink.setStyle("-fx-font-weight: bold; -fx-font-size: 14px; -fx-border-color: transparent; -fx-padding: 0;");
-                        headerLink.setWrapText(true);
+                        if (item instanceof DocumentItem apiItem) {
+                            Hyperlink headerLink = new Hyperlink(item.getHeader());
+                            headerLink.setStyle("-fx-font-weight: bold; -fx-font-size: 14px; -fx-border-color: transparent; -fx-padding: 0;");
+                            headerLink.setWrapText(true);
 
-                        String urlTemp = ConfigService.getInstance().getUrl();
-                        if (urlTemp.endsWith("/")) {
-                            urlTemp = urlTemp.substring(0, urlTemp.length() - 1);
-                        }
-                        if (hasDataEnvio) {
-                            headerLink.setStyle(headerLink.getStyle() + " -fx-text-fill: #640606ff;");
-                            headerLink.setTooltip(new Tooltip("Este documento já foi enviado."));
-                            urlTemp += "/materia/" + jsonData.get("object_id").asText();
-                        } else {
-                            headerLink.setStyle(headerLink.getStyle() + " -fx-text-fill: #064664ff;");
-                            urlTemp += "/proposicao/" + jsonData.get("id").asText();
-                        }
-
-                        final String url = urlTemp;
-                        // Ação ao clicar no link
-                        headerLink.setOnAction(e -> {
-                            try {
-                                App.openUrl(url);
-                            } catch (Exception ex) {
-                                log("Erro ao abrir link: " + ex.getMessage() + "\n");
+                            String urlTemp = ConfigService.getInstance().getUrl();
+                            if (urlTemp != null && urlTemp.endsWith("/")) {
+                                urlTemp = urlTemp.substring(0, urlTemp.length() - 1);
                             }
-                        });
 
-                        // Vincula a largura do header para evitar scroll horizontal
-                        headerLink.prefWidthProperty().bind(getListView().widthProperty().subtract(65));
+                            JsonNode jsonData = apiItem.getJsonData();
+                            boolean hasDataEnvio = disabled;
+                            if (hasDataEnvio) {
+                                headerLink.setStyle(headerLink.getStyle() + " -fx-text-fill: #640606ff;");
+                                headerLink.setTooltip(new Tooltip("Este documento já foi enviado."));
+                                if (urlTemp != null) {
+                                    urlTemp += "/materia/" + jsonData.get("object_id").asText();
+                                }
+                            } else {
+                                headerLink.setStyle(headerLink.getStyle() + " -fx-text-fill: #064664ff;");
+                                if (urlTemp != null) {
+                                    urlTemp += "/proposicao/" + jsonData.get("id").asText();
+                                }
+                            }
 
-                        headerHBox.getChildren().addAll(checkBox, headerLink);
-                        mainVBox.getChildren().add(headerHBox);
+                            final String url = urlTemp;
+                            headerLink.setOnAction(e -> {
+                                if (url == null || url.isBlank()) {
+                                    log("URL base não configurada para abrir o item.\n");
+                                    return;
+                                }
+                                try {
+                                    App.openUrl(url);
+                                } catch (Exception ex) {
+                                    log("Erro ao abrir link: " + ex.getMessage() + "\n");
+                                }
+                            });
 
-                        // VBox para detalhes (Autor, Datas, Descrição)
-                        VBox detailsVBox = new VBox(2);
-                        detailsVBox.setPadding(new Insets(0, 0, 0, 0)); // Indentação para alinhar com o texto do header
+                            headerLink.prefWidthProperty().bind(getListView().widthProperty().subtract(65));
+                            headerHBox.getChildren().addAll(checkBox, headerLink);
 
-                        if (jsonData.has("autor") && !jsonData.get("autor").isNull() && jsonData.get("autor").has("nome")) {
-                            Label autorLabel = new Label("Autor: " + jsonData.get("autor").get("nome").asText());
-                            autorLabel.styleProperty().bind(
+                            VBox detailsVBox = new VBox(2);
+                            detailsVBox.setPadding(new Insets(0, 0, 0, 0));
+
+                            if (jsonData.has("autor") && !jsonData.get("autor").isNull() && jsonData.get("autor").has("nome")) {
+                                Label autorLabel = new Label("Autor: " + jsonData.get("autor").get("nome").asText());
+                                autorLabel.styleProperty().bind(
+                                    javafx.beans.binding.Bindings.when(selectedProperty())
+                                        .then("-fx-font-size: 11px; -fx-text-fill: -fx-selection-bar-text;")
+                                        .otherwise("-fx-font-size: 11px; -fx-text-fill: #555555;")
+                                );
+                                detailsVBox.getChildren().add(autorLabel);
+                            }
+
+                            if (jsonData.has("data_envio") && !jsonData.get("data_envio").isNull()) {
+                                String dataEnvio = jsonData.get("data_envio").asText();
+                                Label dataEnvioLabel = new Label("Enviado em: " + formatData(dataEnvio));
+                                dataEnvioLabel.styleProperty().bind(
+                                    javafx.beans.binding.Bindings.when(selectedProperty())
+                                        .then("-fx-font-size: 11px; -fx-text-fill: -fx-selection-bar-text;")
+                                        .otherwise("-fx-font-size: 11px; -fx-text-fill: #555555;")
+                                );
+                                detailsVBox.getChildren().add(dataEnvioLabel);
+                            }
+
+                            if (jsonData.has("data_recebimento") && !jsonData.get("data_recebimento").isNull()) {
+                                String dataRecebimento = jsonData.get("data_recebimento").asText();
+                                Label dataRecebimentoLabel = new Label("Recebido em: " + formatData(dataRecebimento));
+                                dataRecebimentoLabel.styleProperty().bind(
+                                    javafx.beans.binding.Bindings.when(selectedProperty())
+                                        .then("-fx-font-size: 11px; -fx-text-fill: -fx-selection-bar-text;")
+                                        .otherwise("-fx-font-size: 11px; -fx-text-fill: #555555;")
+                                );
+                                detailsVBox.getChildren().add(dataRecebimentoLabel);
+                            }
+
+                            Label descLabel = new Label(item.getDescription());
+                            descLabel.setWrapText(true);
+                            descLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(65));
+                            descLabel.styleProperty().bind(
+                                javafx.beans.binding.Bindings.when(selectedProperty())
+                                    .then("-fx-text-fill: -fx-selection-bar-text;")
+                                    .otherwise("-fx-text-fill: #666666;")
+                            );
+
+                            detailsVBox.getChildren().add(descLabel);
+                            mainVBox.getChildren().add(headerHBox);
+                            mainVBox.getChildren().add(detailsVBox);
+                        } else if (item instanceof FileItem fileItem) {
+                            Label headerLabel = new Label(item.getHeader());
+                            headerLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
+                            headerLabel.setWrapText(true);
+                            headerLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(65));
+
+                            headerHBox.getChildren().addAll(checkBox, headerLabel);
+
+                            VBox detailsVBox = new VBox(2);
+                            detailsVBox.setPadding(new Insets(0, 0, 0, 0));
+
+                            Label origemLabel = new Label("Origem: " + fileItem.getSourceFile().getAbsolutePath());
+                            origemLabel.setWrapText(true);
+                            origemLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(65));
+                            origemLabel.styleProperty().bind(
                                 javafx.beans.binding.Bindings.when(selectedProperty())
                                     .then("-fx-font-size: 11px; -fx-text-fill: -fx-selection-bar-text;")
                                     .otherwise("-fx-font-size: 11px; -fx-text-fill: #555555;")
                             );
-                            detailsVBox.getChildren().add(autorLabel);
-                        }
 
-                        if (jsonData.has("data_envio") && !jsonData.get("data_envio").isNull()) {
-                            String dataEnvio = jsonData.get("data_envio").asText();
-                            Label dataEnvioLabel = new Label("Enviado em: " + formatData(dataEnvio));
-                            dataEnvioLabel.styleProperty().bind(
+                            Label descLabel = new Label(item.getDescription());
+                            descLabel.setWrapText(true);
+                            descLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(65));
+                            descLabel.styleProperty().bind(
                                 javafx.beans.binding.Bindings.when(selectedProperty())
-                                    .then("-fx-font-size: 11px; -fx-text-fill: -fx-selection-bar-text;")
-                                    .otherwise("-fx-font-size: 11px; -fx-text-fill: #555555;")
+                                    .then("-fx-text-fill: -fx-selection-bar-text;")
+                                    .otherwise("-fx-text-fill: #666666;")
                             );
-                            detailsVBox.getChildren().add(dataEnvioLabel);
+
+                            detailsVBox.getChildren().addAll(origemLabel, descLabel);
+                            mainVBox.getChildren().add(headerHBox);
+                            mainVBox.getChildren().add(detailsVBox);
                         }
-
-                        if (jsonData.has("data_recebimento") && !jsonData.get("data_recebimento").isNull()) {
-                            String dataRecebimento = jsonData.get("data_recebimento").asText();
-                            Label dataRecebimentoLabel = new Label("Recebido em: " + formatData(dataRecebimento));
-                            dataRecebimentoLabel.styleProperty().bind(
-                                javafx.beans.binding.Bindings.when(selectedProperty())
-                                    .then("-fx-font-size: 11px; -fx-text-fill: -fx-selection-bar-text;")
-                                    .otherwise("-fx-font-size: 11px; -fx-text-fill: #555555;")
-                            );
-                            detailsVBox.getChildren().add(dataRecebimentoLabel);
-                        }
-
-                        Label descLabel = new Label(item.getDescription());
-                        descLabel.setWrapText(true);
-                        descLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(65));
-
-                        // Ajusta a cor do texto quando selecionado para garantir contraste
-                        descLabel.styleProperty().bind(
-                            javafx.beans.binding.Bindings.when(selectedProperty())
-                                .then("-fx-text-fill: -fx-selection-bar-text;")
-                                .otherwise("-fx-text-fill: #666666;")
-                        );
-
-                        detailsVBox.getChildren().add(descLabel);
-                        mainVBox.getChildren().add(detailsVBox);
 
                         setGraphic(mainVBox);
                     }
@@ -426,14 +692,12 @@ public class DocumentViewerController {
             };
 
             cell.setOnMouseClicked(event -> {
-                if (event.getButton() == javafx.scene.input.MouseButton.PRIMARY && event.getClickCount() == 2 && !cell.isEmpty()) {
-                    DocumentItem item = cell.getItem();
-                    if (item != null) {
-                        JsonNode jsonData = item.getJsonData();
-                        boolean isDisabled = jsonData.has("data_envio") && !jsonData.get("data_envio").isNull();
-                        if (!isDisabled) {
-                            item.setSelected(!item.isSelected());
-                        }
+                if (event.getButton() == javafx.scene.input.MouseButton.PRIMARY
+                        && event.getClickCount() == 2
+                        && !cell.isEmpty()) {
+                    SignableItem item = cell.getItem();
+                    if (item != null && !isItemDisabled(item)) {
+                        item.setSelected(!item.isSelected());
                     }
                 }
             });
@@ -461,7 +725,7 @@ public class DocumentViewerController {
         }
     }
 
-    private void handleDocumentSelection(DocumentItem item) {
+    private void handleDocumentSelection(SignableItem item) {
         log("Item selecionado: " + item.getHeader() + "\n");
 
         if (item.getPdDocument() != null) {
@@ -469,16 +733,21 @@ public class DocumentViewerController {
             return;
         }
 
-        JsonNode jsonNode = item.getJsonData();
-        if (jsonNode.has("texto_original")) {
-            String textoOriginal = jsonNode.get("texto_original").asText();
-            if (textoOriginal == "null" || textoOriginal == null || textoOriginal.isEmpty()) {
-                log("O documento selecionado não possui PDF disponível.\n");
-                clearPreview();
+        if (item instanceof DocumentItem documentItem) {
+            JsonNode jsonNode = documentItem.getJsonData();
+            if (jsonNode != null && jsonNode.has("texto_original")) {
+                String textoOriginal = jsonNode.get("texto_original").asText();
+                if (textoOriginal == null || textoOriginal.isEmpty() || "null".equals(textoOriginal)) {
+                    log("O documento selecionado não possui PDF disponível.\n");
+                    clearPreview();
+                    return;
+                }
+                loadPdfPreview(textoOriginal, item.getSavedPageIndex(), item.getSavedRect());
                 return;
             }
-            loadPdfPreview(textoOriginal, item.getSavedPageIndex(), item.getSavedRect());
         }
+
+        clearPreview();
     }
 
     private void loadPdfPreview(PDDocument doc, int initialPage, Rectangle initialRect) {
@@ -501,20 +770,18 @@ public class DocumentViewerController {
         clearPreview();
 
         new Thread(() -> {
-            try {
-                try (InputStream is = getInputStreamFromUrl(urlString)) {
-                    byte[] bytes = is.readAllBytes();
-                    currentDocument = org.apache.pdfbox.Loader.loadPDF(bytes);
-                    currentDocumentIsOwnedByItem = false;
-                    pdfRenderer = new PDFRenderer(currentDocument);
-                    totalPages = currentDocument.getNumberOfPages();
-                    currentPageIndex = initialPage;
+            try (InputStream is = getInputStreamFromUrl(urlString)) {
+                byte[] bytes = is.readAllBytes();
+                currentDocument = Loader.loadPDF(bytes);
+                currentDocumentIsOwnedByItem = false;
+                pdfRenderer = new PDFRenderer(currentDocument);
+                totalPages = currentDocument.getNumberOfPages();
+                currentPageIndex = initialPage;
 
-                    renderCurrentPage();
+                renderCurrentPage();
 
-                    if (initialRect != null) {
-                        Platform.runLater(() -> restoreRect(initialRect));
-                    }
+                if (initialRect != null) {
+                    Platform.runLater(() -> restoreRect(initialRect));
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -528,14 +795,16 @@ public class DocumentViewerController {
             group.getChildren().remove(lastRect.get());
         }
         if (rect.getParent() != null) {
-            ((Group)rect.getParent()).getChildren().remove(rect);
+            ((Group) rect.getParent()).getChildren().remove(rect);
         }
         group.getChildren().add(rect);
         lastRect.set(rect);
     }
 
     private void renderCurrentPage() {
-        if (currentDocument == null || pdfRenderer == null) return;
+        if (currentDocument == null || pdfRenderer == null) {
+            return;
+        }
 
         try {
             BufferedImage bim = pdfRenderer.renderImageWithDPI(currentPageIndex, 200, org.apache.pdfbox.rendering.ImageType.RGB);
@@ -545,7 +814,6 @@ public class DocumentViewerController {
                 imageView.setImage(image);
                 updateNavigationButtons();
 
-                // Se for a primeira carga (ou se o usuário quiser), ajusta a largura
                 if (currentPageIndex == 0) {
                     onFitHeight();
                 }
@@ -606,7 +874,7 @@ public class DocumentViewerController {
     }
 
     private void updateCurrentItemState() {
-        DocumentItem selectedItem = documentListView.getSelectionModel().getSelectedItem();
+        SignableItem selectedItem = documentListView.getSelectionModel().getSelectedItem();
         if (selectedItem != null) {
             selectedItem.setSavedPageIndex(currentPageIndex);
             selectedItem.setSavedRect(lastRect.get());
@@ -625,10 +893,14 @@ public class DocumentViewerController {
 
     @FXML
     private void onFitWidth() {
-        if (imageView.getImage() == null) return;
+        if (imageView.getImage() == null) {
+            return;
+        }
 
         double width = scrollPane.getWidth();
-        if (width <= 0) width = 800; // Fallback
+        if (width <= 0) {
+            width = 800;
+        }
 
         double fitScale = (width - 40) / imageView.getImage().getWidth();
         if (fitScale > 0) {
@@ -638,10 +910,14 @@ public class DocumentViewerController {
 
     @FXML
     private void onFitHeight() {
-        if (imageView.getImage() == null) return;
+        if (imageView.getImage() == null) {
+            return;
+        }
 
         double height = scrollPane.getHeight();
-        if (height <= 0) height = 600; // Fallback
+        if (height <= 0) {
+            height = 600;
+        }
 
         double fitScale = (height - 40) / imageView.getImage().getHeight();
         if (fitScale > 0) {
@@ -651,9 +927,20 @@ public class DocumentViewerController {
 
     @FXML
     private void onSend() {
+        if (currentMode != ViewMode.M1) {
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("Aviso");
+            alert.setHeaderText(null);
+            alert.setContentText("O envio para API está disponível apenas no modo M1.");
+            alert.showAndWait();
+            return;
+        }
+
         List<DocumentItem> itemsToSend = documentListView.getItems().stream()
-                .filter(item -> item.getPdDocumentSigned() != null)
-                .collect(Collectors.toList());
+            .filter(item -> item instanceof DocumentItem)
+            .map(item -> (DocumentItem) item)
+            .filter(item -> item.getPdDocumentSigned() != null)
+            .collect(Collectors.toList());
 
         if (itemsToSend.isEmpty()) {
             log("Nenhum documento assinado para enviar.\n");
@@ -664,6 +951,7 @@ public class DocumentViewerController {
             alert.showAndWait();
             return;
         }
+
         log("Iniciando envio de " + itemsToSend.size() + " documentos...\n");
 
         new Thread(() -> {
@@ -673,7 +961,7 @@ public class DocumentViewerController {
                     byte[] pdfBytes = item.getSignedBytes();
                     if (pdfBytes == null) {
                         PDDocument signedDoc = item.getPdDocumentSigned();
-                        try (java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream()) {
+                        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
                             signedDoc.save(baos);
                             pdfBytes = baos.toByteArray();
                         }
@@ -714,9 +1002,9 @@ public class DocumentViewerController {
 
     @FXML
     private void onSign() {
-        List<DocumentItem> selectedItems = documentListView.getItems().stream()
-                .filter(DocumentItem::isSelected)
-                .collect(Collectors.toList());
+        List<SignableItem> selectedItems = documentListView.getItems().stream()
+            .filter(SignableItem::isSelected)
+            .collect(Collectors.toList());
 
         if (selectedItems.isEmpty()) {
             log("Nenhum documento selecionado para assinatura.\n");
@@ -740,7 +1028,7 @@ public class DocumentViewerController {
         typeAlert.getButtonTypes().setAll(btnA1, btnA3, btnCancel);
 
         Optional<ButtonType> typeResult = typeAlert.showAndWait();
-        if (!typeResult.isPresent() || typeResult.get() == btnCancel) {
+        if (typeResult.isEmpty() || typeResult.get() == btnCancel) {
             return;
         }
 
@@ -751,7 +1039,7 @@ public class DocumentViewerController {
         }
     }
 
-    private void signA3(List<DocumentItem> selectedItems) {
+    private void signA3(List<SignableItem> selectedItems) {
         TokenService tokenService = new TokenService();
         List<String> detectedLibs = tokenService.detectLibraries();
         String manualLibPath = null;
@@ -771,7 +1059,9 @@ public class DocumentViewerController {
                     fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Bibliotecas Linux", "*.so"));
                 }
                 File f = fileChooser.showOpenDialog(documentListView.getScene().getWindow());
-                if (f != null) manualLibPath = f.getAbsolutePath();
+                if (f != null) {
+                    manualLibPath = f.getAbsolutePath();
+                }
             }
         }
 
@@ -781,7 +1071,9 @@ public class DocumentViewerController {
         }
 
         String pin = solicitarSenha();
-        if (pin == null) return;
+        if (pin == null) {
+            return;
+        }
 
         final String finalManualLibPath = manualLibPath;
         final String finalPin = pin;
@@ -800,12 +1092,13 @@ public class DocumentViewerController {
                 String alias = null;
                 Enumeration<String> aliases = ks.aliases();
                 while (aliases.hasMoreElements()) {
-                    String a = aliases.nextElement();
-                    alias = a;
+                    alias = aliases.nextElement();
                     break;
                 }
 
-                if (alias == null) throw new Exception("Nenhum certificado encontrado no Token.");
+                if (alias == null) {
+                    throw new Exception("Nenhum certificado encontrado no Token.");
+                }
 
                 AssinaturaService service = new AssinaturaService();
                 service.assinarDocumentos(selectedItems, ks, alias, finalPin.toCharArray());
@@ -833,8 +1126,7 @@ public class DocumentViewerController {
         }).start();
     }
 
-    private void signA1(List<DocumentItem> selectedItems) {
-        // 1. Tenta pegar o certificado da configuração
+    private void signA1(List<SignableItem> selectedItems) {
         String certPath = configService.getCertPath();
         File certificadoFile;
 
@@ -850,7 +1142,6 @@ public class DocumentViewerController {
             certificadoFile = null;
         }
 
-        // Se não tiver certificado configurado ou válido, pede para selecionar
         if (certificadoFile == null) {
             FileChooser fileChooser = new FileChooser();
             fileChooser.setTitle("Selecionar Certificado Digital (.pfx)");
@@ -863,7 +1154,6 @@ public class DocumentViewerController {
             }
         }
 
-        // 2. Solicitar Senha
         String senhaTemp = configService.getCertPassword();
         if (senhaTemp == null || senhaTemp.isEmpty()) {
             senhaTemp = solicitarSenha();
@@ -882,13 +1172,11 @@ public class DocumentViewerController {
 
         new Thread(() -> {
             try {
-                // Carregar KeyStore
                 KeyStore ks = KeyStore.getInstance("PKCS12");
                 try (FileInputStream fis = new FileInputStream(finalCertificadoFile)) {
                     ks.load(fis, senha.toCharArray());
                 }
 
-                // Pegar o primeiro alias que tem chave
                 String alias = null;
                 Enumeration<String> aliases = ks.aliases();
                 while (aliases.hasMoreElements()) {
@@ -903,7 +1191,6 @@ public class DocumentViewerController {
                     throw new Exception("Nenhuma chave privada encontrada no certificado.");
                 }
 
-                // Assinar
                 AssinaturaService service = new AssinaturaService();
                 service.assinarDocumentos(selectedItems, ks, alias, senha.toCharArray());
 
@@ -961,19 +1248,26 @@ public class DocumentViewerController {
 
     @FXML
     private void onSelectAll() {
-        if (isUpdatingSelectAll) return;
+        if (isUpdatingSelectAll) {
+            return;
+        }
 
-        boolean select = chkSelectAll.isSelected();
+        CheckBox activeSelectAll = getActiveSelectAllCheckBox();
+        if (activeSelectAll == null) {
+            return;
+        }
 
-        if (chkSelectAll.isIndeterminate()) {
+        boolean select = activeSelectAll.isSelected();
+
+        if (activeSelectAll.isIndeterminate()) {
             select = true;
-            chkSelectAll.setIndeterminate(false);
-            chkSelectAll.setSelected(true);
+            activeSelectAll.setIndeterminate(false);
+            activeSelectAll.setSelected(true);
         }
 
         isUpdatingSelectAll = true;
         try {
-            for (DocumentItem item : documentListView.getItems()) {
+            for (SignableItem item : documentListView.getItems()) {
                 if (!isItemDisabled(item)) {
                     item.setSelected(select);
                 }
@@ -981,18 +1275,33 @@ public class DocumentViewerController {
         } finally {
             isUpdatingSelectAll = false;
         }
-        chkSelectAll.setIndeterminate(false);
+
+        setSelectAllState(select, false);
+    }
+
+    private CheckBox getActiveSelectAllCheckBox() {
+        return currentMode == ViewMode.M1 ? chkSelectAll : chkSelectAllM2;
+    }
+
+    private void setSelectAllState(boolean selected, boolean indeterminate) {
+        if (chkSelectAll != null) {
+            chkSelectAll.setSelected(selected);
+            chkSelectAll.setIndeterminate(indeterminate);
+        }
+        if (chkSelectAllM2 != null) {
+            chkSelectAllM2.setSelected(selected);
+            chkSelectAllM2.setIndeterminate(indeterminate);
+        }
     }
 
     private void updateSelectAllState() {
-        if (isUpdatingSelectAll) return;
+        if (isUpdatingSelectAll) {
+            return;
+        }
 
-        List<DocumentItem> items = documentListView.getItems();
+        List<SignableItem> items = documentListView.getItems();
         if (items.isEmpty()) {
-            if (chkSelectAll != null) {
-                chkSelectAll.setSelected(false);
-                chkSelectAll.setIndeterminate(false);
-            }
+            setSelectAllState(false, false);
             return;
         }
 
@@ -1001,34 +1310,50 @@ public class DocumentViewerController {
 
         isUpdatingSelectAll = true;
         try {
-            if (totalEnabled == 0) {
-                chkSelectAll.setSelected(false);
-                chkSelectAll.setIndeterminate(false);
+            if (totalEnabled == 0 || totalSelected == 0) {
+                setSelectAllState(false, false);
             } else if (totalSelected == totalEnabled) {
-                chkSelectAll.setSelected(true);
-                chkSelectAll.setIndeterminate(false);
-            } else if (totalSelected == 0) {
-                chkSelectAll.setSelected(false);
-                chkSelectAll.setIndeterminate(false);
+                setSelectAllState(true, false);
             } else {
-                chkSelectAll.setIndeterminate(true);
-                chkSelectAll.setSelected(false);
+                setSelectAllState(false, true);
             }
         } finally {
             isUpdatingSelectAll = false;
         }
     }
 
-    private boolean isItemDisabled(DocumentItem item) {
-        JsonNode jsonData = item.getJsonData();
-        return jsonData.has("data_envio") && !jsonData.get("data_envio").isNull();
+    private boolean isItemDisabled(SignableItem item) {
+        if (item instanceof DocumentItem documentItem) {
+            JsonNode jsonData = documentItem.getJsonData();
+            return jsonData != null && jsonData.has("data_envio") && !jsonData.get("data_envio").isNull();
+        }
+        return false;
     }
 
-    public static class DocumentItem {
+    public interface SignableItem {
+        String getHeader();
+        String getDescription();
+        boolean isSelected();
+        void setSelected(boolean selected);
+        BooleanProperty selectedProperty();
+        int getSavedPageIndex();
+        void setSavedPageIndex(int savedPageIndex);
+        Rectangle getSavedRect();
+        void setSavedRect(Rectangle savedRect);
+        PDDocument getPdDocument();
+        void setPdDocument(PDDocument pdDocument);
+        PDDocument getPdDocumentSigned();
+        void setPdDocumentSigned(PDDocument pdDocumentSigned);
+        byte[] getOriginalBytes();
+        void setOriginalBytes(byte[] originalBytes);
+        byte[] getSignedBytes();
+        void setSignedBytes(byte[] signedBytes);
+    }
+
+    public abstract static class BaseSignableItem implements SignableItem {
         private final String header;
         private final String description;
-        private final JsonNode jsonData;
-        private final javafx.beans.property.BooleanProperty selected = new javafx.beans.property.SimpleBooleanProperty(false);
+        private final BooleanProperty selected = new SimpleBooleanProperty(false);
         private int savedPageIndex = 0;
         private Rectangle savedRect = null;
         private PDDocument pdDocument;
@@ -1036,36 +1361,120 @@ public class DocumentViewerController {
         private byte[] originalBytes;
         private byte[] signedBytes;
 
-        public DocumentItem(String header, String description, JsonNode jsonData) {
+        protected BaseSignableItem(String header, String description) {
             this.header = header;
             this.description = description;
+        }
+
+        @Override
+        public String getHeader() {
+            return header;
+        }
+
+        @Override
+        public String getDescription() {
+            return description;
+        }
+
+        @Override
+        public boolean isSelected() {
+            return selected.get();
+        }
+
+        @Override
+        public void setSelected(boolean selected) {
+            this.selected.set(selected);
+        }
+
+        @Override
+        public BooleanProperty selectedProperty() {
+            return selected;
+        }
+
+        @Override
+        public int getSavedPageIndex() {
+            return savedPageIndex;
+        }
+
+        @Override
+        public void setSavedPageIndex(int savedPageIndex) {
+            this.savedPageIndex = savedPageIndex;
+        }
+
+        @Override
+        public Rectangle getSavedRect() {
+            return savedRect;
+        }
+
+        @Override
+        public void setSavedRect(Rectangle savedRect) {
+            this.savedRect = savedRect;
+        }
+
+        @Override
+        public PDDocument getPdDocument() {
+            return pdDocument;
+        }
+
+        @Override
+        public void setPdDocument(PDDocument pdDocument) {
+            this.pdDocument = pdDocument;
+        }
+
+        @Override
+        public PDDocument getPdDocumentSigned() {
+            return pdDocumentSigned;
+        }
+
+        @Override
+        public void setPdDocumentSigned(PDDocument pdDocumentSigned) {
+            this.pdDocumentSigned = pdDocumentSigned;
+        }
+
+        @Override
+        public byte[] getOriginalBytes() {
+            return originalBytes;
+        }
+
+        @Override
+        public void setOriginalBytes(byte[] originalBytes) {
+            this.originalBytes = originalBytes;
+        }
+
+        @Override
+        public byte[] getSignedBytes() {
+            return signedBytes;
+        }
+
+        @Override
+        public void setSignedBytes(byte[] signedBytes) {
+            this.signedBytes = signedBytes;
+        }
+    }
+
+    public static class DocumentItem extends BaseSignableItem {
+        private final JsonNode jsonData;
+
+        public DocumentItem(String header, String description, JsonNode jsonData) {
+            super(header, description);
             this.jsonData = jsonData;
         }
 
-        public String getHeader() { return header; }
-        public String getDescription() { return description; }
-        public JsonNode getJsonData() { return jsonData; }
+        public JsonNode getJsonData() {
+            return jsonData;
+        }
+    }
 
-        public boolean isSelected() { return selected.get(); }
-        public void setSelected(boolean selected) { this.selected.set(selected); }
-        public javafx.beans.property.BooleanProperty selectedProperty() { return selected; }
+    public static class FileItem extends BaseSignableItem {
+        private final File sourceFile;
 
-        public int getSavedPageIndex() { return savedPageIndex; }
-        public void setSavedPageIndex(int savedPageIndex) { this.savedPageIndex = savedPageIndex; }
+        public FileItem(String header, String description, File sourceFile) {
+            super(header, description);
+            this.sourceFile = sourceFile;
+        }
 
-        public Rectangle getSavedRect() { return savedRect; }
-        public void setSavedRect(Rectangle savedRect) { this.savedRect = savedRect; }
-
-        public PDDocument getPdDocument() { return pdDocument; }
-        public void setPdDocument(PDDocument pdDocument) { this.pdDocument = pdDocument; }
-
-        public PDDocument getPdDocumentSigned() { return pdDocumentSigned; }
-        public void setPdDocumentSigned(PDDocument pdDocumentSigned) { this.pdDocumentSigned = pdDocumentSigned; }
-
-        public byte[] getOriginalBytes() { return originalBytes; }
-        public void setOriginalBytes(byte[] originalBytes) { this.originalBytes = originalBytes; }
-
-        public byte[] getSignedBytes() { return signedBytes; }
-        public void setSignedBytes(byte[] signedBytes) { this.signedBytes = signedBytes; }
+        public File getSourceFile() {
+            return sourceFile;
+        }
     }
 }

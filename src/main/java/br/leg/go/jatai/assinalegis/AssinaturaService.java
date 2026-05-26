@@ -1,6 +1,6 @@
 package br.leg.go.jatai.assinalegis;
 
-import br.leg.go.jatai.assinalegis.DocumentViewerController.DocumentItem;
+import br.leg.go.jatai.assinalegis.DocumentViewerController.SignableItem;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import javafx.scene.shape.Rectangle;
@@ -55,7 +55,7 @@ public class AssinaturaService {
      * @param senha    Senha da chave privada
      * @throws Exception Em caso de erro na assinatura
      */
-    public void assinarDocumentos(List<DocumentItem> itens, KeyStore keyStore, String alias, char[] senha) throws Exception {
+    public void assinarDocumentos(List<? extends SignableItem> itens, KeyStore keyStore, String alias, char[] senha) throws Exception {
 
         // 1. Recupera Chave Privada e Cadeia de Certificados
         PrivateKey privateKey = (PrivateKey) keyStore.getKey(alias, senha);
@@ -69,10 +69,10 @@ public class AssinaturaService {
         String nomeAssinante = extrairCN((X509Certificate) certificateChain[0]);
 
         // Inverte a lista para assinar na ordem correta (se necessário)
-        List<DocumentItem> itensInvertidos = new ArrayList<>(itens);
+        List<SignableItem> itensInvertidos = new ArrayList<>(itens);
         java.util.Collections.reverse(itensInvertidos);
 
-        for (DocumentItem item : itensInvertidos) {
+        for (SignableItem item : itensInvertidos) {
             byte[] originalBytes = item.getOriginalBytes();
             if (originalBytes == null) {
                 // Fallback se não tiver bytes originais (ex: carregado via loadPdfPreview sem salvar no item)
