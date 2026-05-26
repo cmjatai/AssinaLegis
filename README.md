@@ -41,6 +41,9 @@ Os instaladores prontos para uso incluem a runtime Java embutida — **não é n
 |---|---|---|
 | Linux (Ubuntu/Debian) | `assinalegis_*.deb` | `sudo dpkg -i assinalegis_*.deb` |
 | Windows | `AssinaLegis-*.msi` | Executar o instalador e seguir os passos |
+| jar | `AssinaLegis-*.jar` | Possuíndo Java 21 instalado, o jar executará |
+
+Versão 1.2 instalável para Windows será disponibilizada em 28/05/2026.
 
 Após a instalação, o AssinaLegis aparece no menu de aplicativos do sistema operacional.
 
