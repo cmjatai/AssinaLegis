@@ -124,7 +124,7 @@ Artefatos gerados:
 Executar o JAR gerado:
 
 ```bash
-java -jar dist/assinalegis-1.1.0-SNAPSHOT.jar
+java -jar dist/assinalegis-1.2.0-SNAPSHOT.jar
 ```
 
 ### Executar os testes

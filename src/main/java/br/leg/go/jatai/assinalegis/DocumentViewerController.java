@@ -239,6 +239,8 @@ public class DocumentViewerController {
         }
 
         if (btnModeM1 != null) {
+            btnModeM1.setVisible(tokenConfigurado);
+            btnModeM1.setManaged(tokenConfigurado);
             btnModeM1.setDisable(m1 || !tokenConfigurado);
         }
         if (btnModeM2 != null) {

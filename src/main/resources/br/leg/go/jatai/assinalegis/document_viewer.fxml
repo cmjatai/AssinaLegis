@@ -22,8 +22,8 @@
         </padding>
 
         <HBox alignment="CENTER_LEFT" spacing="5">
-            <Button fx:id="btnModeM1" text="M1" onAction="#onSwitchToM1"/>
-            <Button fx:id="btnModeM2" text="M2" onAction="#onSwitchToM2"/>
+            <Button fx:id="btnModeM1" text="SAPL" onAction="#onSwitchToM1"/>
+            <Button fx:id="btnModeM2" text="LOCAL" onAction="#onSwitchToM2"/>
         </HBox>
 
         <HBox alignment="CENTER_LEFT" spacing="5" fx:id="hBoxM1Controls" HBox.hgrow="ALWAYS">
