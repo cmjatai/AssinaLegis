@@ -188,6 +188,21 @@ public class ApiService {
         return builder.build();
     }
 
+    // Package-private para testes (mesma package/módulo) — injeta ConfigService e OkHttpClient
+    ApiService(ConfigService configService, OkHttpClient client) {
+        this.configService = configService;
+        this.mapper = new ObjectMapper();
+        this.client = client;
+    }
+
+    static synchronized void resetForTest(ConfigService configService, OkHttpClient client) {
+        instance = new ApiService(configService, client);
+    }
+
+    static synchronized void clearInstanceForTest() {
+        instance = null;
+    }
+
     public static class FileData {
         public final String fileName;
         public final byte[] content;
