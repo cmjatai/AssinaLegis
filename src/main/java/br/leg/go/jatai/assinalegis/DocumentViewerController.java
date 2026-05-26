@@ -370,9 +370,7 @@ public class DocumentViewerController {
             return;
         }
 
-        clearPreview();
-        clearItemsAndDocuments();
-        log("Carregando " + arquivos.size() + " arquivo(s) local(is)...\n");
+        log("Carregando " + arquivos.size() + " arquivo(s) local(is) em etapa incremental...\n");
 
         new Thread(() -> {
             int carregados = 0;
@@ -400,6 +398,26 @@ public class DocumentViewerController {
                 log("Arquivos locais carregados: " + totalCarregados + ".\n");
             });
         }).start();
+    }
+
+    @FXML
+    private void onClearLocalList() {
+        if (currentMode != ViewMode.M2) {
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("Aviso");
+            alert.setHeaderText(null);
+            alert.setContentText("A limpeza da lista local está disponível apenas no modo M2.");
+            alert.showAndWait();
+            return;
+        }
+
+        if (documentListView.getItems().isEmpty()) {
+            return;
+        }
+
+        clearPreview();
+        clearItemsAndDocuments();
+        log("Lista local limpa.\n");
     }
 
     @FXML
@@ -730,7 +748,13 @@ public class DocumentViewerController {
                             headerLabel.setWrapText(true);
                             headerLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(65));
 
-                            headerHBox.getChildren().addAll(checkBox, headerLabel);
+                            Button removeButton = new Button("Remover");
+                            removeButton.setOnAction(event -> {
+                                removeFileItem(fileItem);
+                                event.consume();
+                            });
+
+                            headerHBox.getChildren().addAll(checkBox, headerLabel, removeButton);
 
                             VBox detailsVBox = new VBox(2);
                             detailsVBox.setPadding(new Insets(0, 0, 0, 0));
@@ -1400,6 +1424,31 @@ public class DocumentViewerController {
             return jsonData != null && jsonData.has("data_envio") && !jsonData.get("data_envio").isNull();
         }
         return false;
+    }
+
+    private void removeFileItem(FileItem fileItem) {
+        if (fileItem == null) {
+            return;
+        }
+
+        SignableItem selectedItem = documentListView.getSelectionModel().getSelectedItem();
+        boolean removePreview = selectedItem == fileItem;
+
+        closeDocumentIfNecessary(fileItem.getPdDocument());
+        closeDocumentIfNecessary(fileItem.getPdDocumentSigned());
+        fileItem.setPdDocument(null);
+        fileItem.setPdDocumentSigned(null);
+        fileItem.setOriginalBytes(null);
+        fileItem.setSignedBytes(null);
+
+        documentListView.getItems().remove(fileItem);
+
+        if (removePreview) {
+            clearPreview();
+        }
+
+        updateSelectAllState();
+        log("Arquivo removido da lista: " + fileItem.getHeader() + "\n");
     }
 
     public interface SignableItem {
