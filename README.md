@@ -1,7 +1,7 @@
 # AssinaLegis
 
 <p align="center">
-  <img src="src/main/resources/icon.png" alt="AssinaLegis" width="96"/>
+  <img src="src/main/resources/icon.png" alt="AssinaLegis" width="256"/>
 </p>
 
 > Aplicativo desktop para **assinatura digital de documentos PDF** segundo o padrão ICP-Brasil, desenvolvido pela [Câmara Municipal de Jataí](https://www.jatai.go.leg.br) — GO.
