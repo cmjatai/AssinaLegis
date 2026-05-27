@@ -33,14 +33,14 @@ O AssinaLegis permite ao servidor público visualizar e assinar documentos PDF c
 
 ## 1. Para Usuários Finais — Download e Instalação
 
-Os instaladores prontos para uso incluem a runtime Java embutida — **não é necessário instalar o Java separadamente**. Por serem grandes (> 100 MB), não estão no repositório; estão disponíveis no Drive compartilhado abaixo:
+Os instaladores prontos para uso incluem a runtime Java embutida — **não é necessário instalar o Java separadamente**. 
 
-> 📦 **[Download dos Instaladores — Google Drive](https://drive.google.com/drive/folders/1va1BkV7KyGoOuFIh8rsNMWclBkxA93Tt?usp=sharing)**
+> 📦 **[Download dos Instaladores da Versão v1.2.0](https://github.com/cmjatai/AssinaLegis/releases/tag/v1.2.0)**
 
 | Sistema | Arquivo | Como instalar |
 |---|---|---|
 | Linux (Ubuntu/Debian) | `assinalegis_*.deb` | `sudo dpkg -i assinalegis_*.deb` |
-| Windows | `AssinaLegis-*.msi` | Executar o instalador e seguir os passos |
+| Windows | `AssinaLegis-*.msi` | Executar o instalador e seguir os passos (pode ser necessário reiniciar o computador) |
 | jar | `AssinaLegis-*.jar` | Possuíndo Java 21 instalado, o jar executará |
 
 Após a instalação, o AssinaLegis aparece no menu de aplicativos do sistema operacional.
