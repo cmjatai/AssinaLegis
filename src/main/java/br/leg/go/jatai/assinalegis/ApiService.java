@@ -203,6 +203,44 @@ public class ApiService {
         instance = null;
     }
 
+    /**
+     * Retorna a lista de assinantes de uma proposição.
+     * GET /api/materia/proposicao/{id}/assinantes/
+     */
+    public InputStream getAssinantes(int proposicaoId) throws Exception {
+        return get("materia", "proposicao", proposicaoId, "assinantes", null);
+    }
+
+    /**
+     * Captura o lock de assinatura para a proposição.
+     * POST /api/materia/proposicao/{id}/capturar_assinatura/
+     * Retorna JSON com hash_code e data_captura.
+     */
+    public com.fasterxml.jackson.databind.JsonNode capturarAssinatura(int proposicaoId) throws Exception {
+        try (InputStream is = post("materia", "proposicao", proposicaoId, "capturar_assinatura", null, null)) {
+            return mapper.readTree(is);
+        }
+    }
+
+    /**
+     * Libera o lock de assinatura sem assinar.
+     * POST /api/materia/proposicao/{id}/liberar_assinatura/
+     */
+    public void liberarAssinatura(int proposicaoId) throws Exception {
+        try (InputStream is = post("materia", "proposicao", proposicaoId, "liberar_assinatura", null, null)) {
+            // consome a resposta para fechar a conexão
+            if (is != null) is.readAllBytes();
+        }
+    }
+
+    /**
+     * Lista as proposições em que o usuário logado é co-signatário pendente.
+     * GET /api/materia/proposicao/minhas_solicitacoes/
+     */
+    public InputStream getSolicitacoes() throws Exception {
+        return get("materia", "proposicao", null, "minhas_solicitacoes", null);
+    }
+
     public static class FileData {
         public final String fileName;
         public final byte[] content;

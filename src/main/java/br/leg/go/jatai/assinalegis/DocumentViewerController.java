@@ -57,10 +57,24 @@ import java.security.KeyStore;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Enumeration;
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
+import javafx.scene.control.ProgressBar;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
+import javafx.util.Duration;
+import java.security.MessageDigest;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -82,6 +96,17 @@ public class DocumentViewerController {
     @FXML private Button btnModeM2;
     @FXML private HBox hBoxM1Controls;
     @FXML private HBox hBoxM2Controls;
+
+    @FXML private TabPane tabPaneM1;
+    @FXML private Tab tabMinhas;
+    @FXML private Tab tabSolicitacoes;
+    @FXML private ListView<SignableItem> documentListViewSolicitacoes;
+    @FXML private HBox hBoxLockStatus;
+    @FXML private Label lblLockItem;
+    @FXML private ProgressBar pbLockCountdown;
+    @FXML private Label lblLockTempo;
+    @FXML private Button btnLiberarLock;
+    @FXML private Button btnSubmeterM1;
 
     @FXML private Button btnFirstPage;
     @FXML private Button btnPrevPage;
@@ -112,6 +137,20 @@ public class DocumentViewerController {
     private ConfigService.ConfigObserver authStateObserver;
     private boolean ultimoEstadoTokenConfigurado;
 
+    // --- Estado do lock de assinatura colaborativa ---
+    /** Item que detém o lock ativo no momento. */
+    private AssinaturaItem itemComLockAtivo = null;
+    /** Timeline que atualiza o countdown visual. */
+    private Timeline lockCountdownTimeline = null;
+    /** Serviço de agendamento para o polling pós-upload. */
+    private final ScheduledExecutorService pollingExecutor =
+            Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "polling-assinatura");
+                t.setDaemon(true);
+                return t;
+            });
+    private ScheduledFuture<?> pollingFuture = null;
+
     @FXML
     public void initialize() {
         configService = ConfigService.getInstance();
@@ -127,7 +166,18 @@ public class DocumentViewerController {
         }
 
         initializeDocumentList();
+        initializeSolicitacoesList();
         setupViewer();
+
+        if (tabPaneM1 != null) {
+            tabPaneM1.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
+                atualizarBotaoSubmeter();
+                if (newTab == tabSolicitacoes && hasTokenConfigurado()) {
+                    refreshSolicitacoesList();
+                }
+            });
+        }
+
         if (hasTokenConfigurado()) {
             switchMode(ViewMode.M1);
         } else {
@@ -248,7 +298,30 @@ public class DocumentViewerController {
             btnModeM2.setDisable(!m1);
         }
 
+        // Abas do TabPane M1
+        if (tabMinhas != null) {
+            tabMinhas.setText(m1 ? "Minhas Proposições" : "Arquivos Locais");
+        }
+        if (tabSolicitacoes != null) {
+            tabSolicitacoes.setDisable(!m1);
+            if (!m1 && tabPaneM1 != null) {
+                tabPaneM1.getSelectionModel().select(tabMinhas);
+            }
+        }
+
+        // Botão Submeter: ocultar quando a aba Solicitações estiver ativa
+        atualizarBotaoSubmeter();
+
         updateSelectAllState();
+    }
+
+    private void atualizarBotaoSubmeter() {
+        if (btnSubmeterM1 == null) return;
+        boolean solicitacoesAtiva = currentMode == ViewMode.M1
+                && tabPaneM1 != null
+                && tabPaneM1.getSelectionModel().getSelectedItem() == tabSolicitacoes;
+        btnSubmeterM1.setVisible(!solicitacoesAtiva);
+        btnSubmeterM1.setManaged(!solicitacoesAtiva);
     }
 
     private boolean hasTokenConfigurado() {
@@ -516,7 +589,25 @@ public class DocumentViewerController {
             item.setSignedBytes(null);
         }
         documentListView.getItems().clear();
+        clearSolicitacoesListItems();
         updateSelectAllState();
+    }
+
+    private void clearSolicitacoesListItems() {
+        cancelarLockAtivo(false);
+        pararPolling();
+        if (documentListViewSolicitacoes != null) {
+            for (SignableItem item : documentListViewSolicitacoes.getItems()) {
+                closeDocumentIfNecessary(item.getPdDocument());
+                closeDocumentIfNecessary(item.getPdDocumentSigned());
+                item.setPdDocument(null);
+                item.setPdDocumentSigned(null);
+                item.setOriginalBytes(null);
+                item.setSignedBytes(null);
+            }
+            documentListViewSolicitacoes.getItems().clear();
+        }
+        atualizarBadgeSolicitacoes(0);
     }
 
     private void closeDocumentIfNecessary(PDDocument document) {
@@ -851,6 +942,18 @@ public class DocumentViewerController {
             }
         }
 
+        if (item instanceof AssinaturaItem assinaturaItem) {
+            JsonNode jsonNode = assinaturaItem.getJsonData();
+            if (jsonNode != null && jsonNode.has("texto_original")) {
+                String textoOriginal = jsonNode.get("texto_original").asText();
+                if (textoOriginal != null && !textoOriginal.isEmpty() && !"null".equals(textoOriginal)) {
+                    loadPdfPreview(textoOriginal, item.getSavedPageIndex(), item.getSavedRect());
+                    return;
+                }
+            }
+            log("A proposição selecionada não possui PDF disponível.\n");
+        }
+
         clearPreview();
     }
 
@@ -1104,8 +1207,652 @@ public class DocumentViewerController {
         }).start();
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // Métodos do fluxo de Solicitações de Assinatura
+    // ─────────────────────────────────────────────────────────────────
+
+    private void initializeSolicitacoesList() {
+        if (documentListViewSolicitacoes == null) return;
+
+        ObservableList<SignableItem> items = FXCollections.observableArrayList();
+        documentListViewSolicitacoes.setItems(items);
+        documentListViewSolicitacoes.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
+
+        documentListViewSolicitacoes.setCellFactory(param -> new ListCell<>() {
+            @Override
+            protected void updateItem(SignableItem item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                    return;
+                }
+                if (!(item instanceof AssinaturaItem assinaturaItem)) return;
+
+                VBox mainVBox = new VBox(5);
+
+                HBox headerHBox = new HBox(8);
+                headerHBox.setAlignment(Pos.CENTER_LEFT);
+
+                CheckBox checkBox = new CheckBox();
+                checkBox.selectedProperty().bindBidirectional(item.selectedProperty());
+                boolean disabled = isItemDisabled(item);
+                checkBox.setDisable(disabled);
+
+                Hyperlink headerLink = new Hyperlink(item.getHeader());
+                headerLink.setStyle("-fx-font-weight: bold; -fx-font-size: 14px; -fx-border-color: transparent; -fx-padding: 0; -fx-text-fill: #4A1A6B;");
+                headerLink.setWrapText(true);
+                headerLink.prefWidthProperty().bind(getListView().widthProperty().subtract(120));
+
+                String urlTemp = ConfigService.getInstance().getUrl();
+                if (urlTemp != null && urlTemp.endsWith("/")) urlTemp = urlTemp.substring(0, urlTemp.length() - 1);
+                JsonNode jsonData = assinaturaItem.getJsonData();
+                if (urlTemp != null && jsonData.has("id")) {
+                    final String url = urlTemp + "/proposicao/" + jsonData.get("id").asText();
+                    headerLink.setOnAction(e -> {
+                        try { App.openUrl(url); } catch (Exception ex) { log("Erro ao abrir link: " + ex.getMessage() + "\n"); }
+                    });
+                }
+
+                String status = assinaturaItem.getStatusAssinatura();
+                String badgeTexto = switch (status) {
+                    case "A" -> "EM ASSINATURA";
+                    case "S" -> "ASSINADO";
+                    default  -> "PENDENTE";
+                };
+                String badgeCor = switch (status) {
+                    case "A" -> "-fx-background-color: #e6a817; -fx-text-fill: #5a3e00;";
+                    case "S" -> "-fx-background-color: #28a745; -fx-text-fill: white;";
+                    default  -> "-fx-background-color: #6c757d; -fx-text-fill: white;";
+                };
+                Label badgeLabel = new Label(badgeTexto);
+                badgeLabel.setStyle(badgeCor + " -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 2 6 2 6; -fx-background-radius: 4;");
+
+                headerHBox.getChildren().addAll(checkBox, headerLink, badgeLabel);
+
+                VBox detailsVBox = new VBox(2);
+                if (jsonData.has("autor") && !jsonData.get("autor").isNull()) {
+                    String nomeAutor = jsonData.get("autor").isObject() && jsonData.get("autor").has("nome")
+                            ? jsonData.get("autor").get("nome").asText()
+                            : jsonData.get("autor").asText();
+                    Label autorLabel = new Label("Autor principal: " + nomeAutor);
+                    autorLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #555555;");
+                    detailsVBox.getChildren().add(autorLabel);
+                }
+                Label descLabel = new Label(item.getDescription());
+                descLabel.setWrapText(true);
+                descLabel.prefWidthProperty().bind(getListView().widthProperty().subtract(65));
+                descLabel.setStyle("-fx-text-fill: #666666;");
+                detailsVBox.getChildren().add(descLabel);
+
+                mainVBox.getChildren().addAll(headerHBox, detailsVBox);
+                setGraphic(mainVBox);
+            }
+        });
+
+        documentListViewSolicitacoes.getSelectionModel().selectedItemProperty().addListener((obs, old, newItem) -> {
+            if (old != null) {
+                old.setSavedPageIndex(currentPageIndex);
+                old.setSavedRect(lastRect.get());
+            }
+            if (newItem != null) {
+                handleDocumentSelection(newItem);
+            }
+        });
+    }
+
+    @FXML
+    private void onRefreshSolicitacoes() {
+        if (currentMode != ViewMode.M1) return;
+        log("Atualizando solicitações...\n");
+        clearPreview();
+        clearSolicitacoesListItems();
+        refreshSolicitacoesList();
+    }
+
+    private void refreshSolicitacoesList() {
+        if (documentListViewSolicitacoes == null) return;
+        ObservableList<SignableItem> items = documentListViewSolicitacoes.getItems();
+
+        new Thread(() -> {
+            try {
+                InputStream response = ApiService.getInstance().getSolicitacoes();
+                ObjectMapper mapper = new ObjectMapper();
+                JsonNode root = mapper.readTree(response);
+
+                List<AssinaturaItem> novosItens = new ArrayList<>();
+                if (root.has("results") && root.get("results").isArray()) {
+                    for (JsonNode node : root.get("results")) {
+                        String header = node.has("__str__") ? node.get("__str__").asText() : "";
+                        String description = node.has("descricao") ? node.get("descricao").asText() : "";
+                        AssinaturaItem item = new AssinaturaItem(header, description, node);
+                        preloadPdfSolicitacao(item);
+                        novosItens.add(item);
+                    }
+                }
+
+                Platform.runLater(() -> {
+                    items.clear();
+                    items.addAll(novosItens);
+                    atualizarBadgeSolicitacoes(novosItens.size());
+                    log("Solicitações de assinatura carregadas: " + novosItens.size() + ".\n");
+                });
+            } catch (Exception e) {
+                Platform.runLater(() -> log("Erro ao carregar solicitações: " + e.getMessage() + "\n"));
+            }
+        }).start();
+    }
+
+    private void preloadPdfSolicitacao(AssinaturaItem item) {
+        JsonNode jsonNode = item.getJsonData();
+        if (!jsonNode.has("texto_original")) return;
+        String urlString = jsonNode.get("texto_original").asText();
+        if (urlString == null || urlString.isBlank() || "null".equals(urlString)) return;
+
+        new Thread(() -> {
+            try (InputStream is = getInputStreamFromUrl(urlString)) {
+                byte[] bytes = is.readAllBytes();
+                item.setOriginalBytes(bytes);
+                PDDocument doc = Loader.loadPDF(bytes);
+                item.setPdDocument(doc);
+            } catch (Exception e) {
+                log("Erro ao pré-carregar PDF de solicitação: " + e.getMessage() + "\n");
+            }
+        }).start();
+    }
+
+    private void atualizarBadgeSolicitacoes(int count) {
+        Platform.runLater(() -> {
+            if (tabSolicitacoes != null) {
+                tabSolicitacoes.setText(count > 0 ? "Solicitações (" + count + ")" : "Solicitações");
+            }
+        });
+    }
+
+    // ─── Lock / Countdown / Polling ────────────────────────────────
+
+    private void iniciarCountdown(AssinaturaItem item, ZonedDateTime dataCaptura) {
+        pararCountdown();
+        if (hBoxLockStatus != null) {
+            hBoxLockStatus.setVisible(true);
+            hBoxLockStatus.setManaged(true);
+            if (lblLockItem != null) lblLockItem.setText(item.getHeader());
+        }
+
+        long expiracaoEpoch = dataCaptura.toEpochSecond() + 300; // 5 min
+
+        lockCountdownTimeline = new Timeline(new KeyFrame(Duration.seconds(1), event -> {
+            long restantes = expiracaoEpoch - java.time.Instant.now().getEpochSecond();
+            if (restantes <= 0) {
+                pararCountdown();
+                log("Lock de assinatura expirado.\n");
+                return;
+            }
+            long min = restantes / 60;
+            long seg = restantes % 60;
+            double progresso = (double) restantes / 300.0;
+            if (pbLockCountdown != null) pbLockCountdown.setProgress(progresso);
+            if (lblLockTempo != null) lblLockTempo.setText(String.format("%d:%02d restantes", min, seg));
+        }));
+        lockCountdownTimeline.setCycleCount(Timeline.INDEFINITE);
+        lockCountdownTimeline.play();
+    }
+
+    private void pararCountdown() {
+        if (lockCountdownTimeline != null) {
+            lockCountdownTimeline.stop();
+            lockCountdownTimeline = null;
+        }
+        Platform.runLater(() -> {
+            if (hBoxLockStatus != null) {
+                hBoxLockStatus.setVisible(false);
+                hBoxLockStatus.setManaged(false);
+            }
+        });
+    }
+
+    private void pararPolling() {
+        if (pollingFuture != null && !pollingFuture.isDone()) {
+            pollingFuture.cancel(false);
+            pollingFuture = null;
+        }
+    }
+
+    private void cancelarLockAtivo(boolean liberarNoServidor) {
+        pararCountdown();
+        pararPolling();
+        if (itemComLockAtivo != null && liberarNoServidor) {
+            final int id = itemComLockAtivo.getProposicaoId();
+            itemComLockAtivo.setStatusAssinatura("P");
+            new Thread(() -> {
+                try {
+                    ApiService.getInstance().liberarAssinatura(id);
+                    log("Lock liberado no servidor.\n");
+                } catch (Exception e) {
+                    log("Aviso: não foi possível liberar o lock no servidor: " + e.getMessage() + "\n");
+                }
+            }).start();
+        }
+        if (itemComLockAtivo != null) {
+            itemComLockAtivo.setStatusAssinatura("P");
+            Platform.runLater(() -> {
+                if (documentListViewSolicitacoes != null) documentListViewSolicitacoes.refresh();
+            });
+        }
+        itemComLockAtivo = null;
+    }
+
+    @FXML
+    private void onLiberarLock() {
+        if (itemComLockAtivo == null) return;
+        cancelarLockAtivo(true);
+        log("Lock liberado pelo usuário.\n");
+    }
+
+    private void liberarLockComErro(AssinaturaItem item, String mensagem) {
+        cancelarLockAtivo(true);
+        Platform.runLater(() -> {
+            log("Erro no fluxo de assinatura: " + mensagem + "\n");
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("Erro na Assinatura");
+            alert.setHeaderText("Operação cancelada");
+            alert.setContentText(mensagem);
+            alert.showAndWait();
+        });
+    }
+
+    private void iniciarPolling(AssinaturaItem item, int autorIdLock) {
+        final int proposicaoId = item.getProposicaoId();
+        final int maxTentativas = 24; // 24 × 5s = 2 min
+        final int[] tentativas = {0};
+        final ObjectMapper pollingMapper = new ObjectMapper();
+
+        pollingFuture = pollingExecutor.scheduleWithFixedDelay(() -> {
+            tentativas[0]++;
+            try {
+                InputStream is = ApiService.getInstance().getAssinantes(proposicaoId);
+                JsonNode assinantes = pollingMapper.readTree(is);
+
+                String statusAtual = null;
+                if (assinantes.isArray()) {
+                    for (JsonNode a : assinantes) {
+                        if (autorIdLock > 0 && a.has("autor_id") && a.get("autor_id").asInt() == autorIdLock) {
+                            statusAtual = a.has("status") ? a.get("status").asText() : null;
+                            break;
+                        }
+                    }
+                    // Fallback: procura qualquer entrada que não seja P (foi processada)
+                    if (statusAtual == null) {
+                        for (JsonNode a : assinantes) {
+                            String s = a.has("status") ? a.get("status").asText() : "P";
+                            if ("S".equals(s)) { statusAtual = "S"; break; }
+                        }
+                    }
+                }
+
+                if ("S".equals(statusAtual)) {
+                    pararPolling();
+                    item.setStatusAssinatura("S");
+                    Platform.runLater(() -> {
+                        log("Assinatura confirmada pelo servidor!\n");
+                        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                        alert.setTitle("Assinatura Confirmada");
+                        alert.setHeaderText(null);
+                        alert.setContentText("A assinatura foi validada e confirmada pelo servidor.");
+                        alert.showAndWait();
+                        onRefreshSolicitacoes();
+                    });
+                    itemComLockAtivo = null;
+                } else if ("P".equals(statusAtual) && tentativas[0] > 2) {
+                    // Lock liberado pelo servidor → CN não coincidiu
+                    pararPolling();
+                    itemComLockAtivo = null;
+                    item.setStatusAssinatura("P");
+                    Platform.runLater(() -> {
+                        log("O servidor rejeitou a assinatura: o CN do certificado não coincide com o cadastrado.\n");
+                        Alert alert = new Alert(Alert.AlertType.WARNING);
+                        alert.setTitle("Assinatura Rejeitada");
+                        alert.setHeaderText("O servidor não confirmou a assinatura");
+                        alert.setContentText("O CN do certificado utilizado não corresponde ao certificado cadastrado para o seu usuário.\n\nContate o administrador do sistema para verificar o campo 'Certificado CN'.");
+                        alert.showAndWait();
+                        if (documentListViewSolicitacoes != null) documentListViewSolicitacoes.refresh();
+                    });
+                } else if (tentativas[0] >= maxTentativas) {
+                    pararPolling();
+                    itemComLockAtivo = null;
+                    Platform.runLater(() -> {
+                        log("Timeout do polling. Verifique o status no portal.\n");
+                        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                        alert.setTitle("Verificação Pendente");
+                        alert.setHeaderText(null);
+                        alert.setContentText("O servidor ainda está processando a assinatura. Verifique o status da proposição no portal.");
+                        alert.showAndWait();
+                        onRefreshSolicitacoes();
+                    });
+                }
+            } catch (Exception e) {
+                log("Erro no polling de status: " + e.getMessage() + "\n");
+            }
+        }, 5, 5, TimeUnit.SECONDS);
+    }
+
+    private String calcularHashSHA256(byte[] bytes) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] hash = digest.digest(bytes);
+        return HexFormat.of().formatHex(hash);
+    }
+
+    // ─── Fluxo principal de assinatura de solicitação ──────────────
+
+    private record A3Credenciais(String libPath, char[] pin) {}
+    private record A1Credenciais(java.io.File certFile, char[] senha) {}
+
+    /** Coleta credenciais A3 na thread FX. Retorna null se o usuário cancelar. */
+    private A3Credenciais promptA3Credenciais() {
+        TokenService tokenService = new TokenService();
+        List<String> detectedLibs = tokenService.detectLibraries();
+        String libPath = null;
+
+        if (detectedLibs.isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+            alert.setTitle("Driver não encontrado");
+            alert.setHeaderText("Driver do token não detectado automaticamente.");
+            alert.setContentText("Deseja selecionar o arquivo do driver (DLL/SO) manualmente?");
+            Optional<ButtonType> res = alert.showAndWait();
+            if (res.isPresent() && res.get() == ButtonType.OK) {
+                FileChooser fc = new FileChooser();
+                fc.setTitle("Selecionar Driver do Token");
+                if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                    fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Bibliotecas Windows", "*.dll"));
+                } else {
+                    fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Bibliotecas Linux", "*.so"));
+                }
+                java.io.File f = fc.showOpenDialog(documentListViewSolicitacoes.getScene().getWindow());
+                if (f != null) libPath = f.getAbsolutePath();
+            }
+        } else {
+            libPath = null; // usa detecção automática
+        }
+
+        if (detectedLibs.isEmpty() && libPath == null) return null;
+
+        String pin = solicitarSenha();
+        if (pin == null) return null;
+        return new A3Credenciais(libPath, pin.toCharArray());
+    }
+
+    /** Coleta credenciais A1 na thread FX. Retorna null se o usuário cancelar. */
+    private A1Credenciais promptA1Credenciais() {
+        String certPath = configService.getCertPath();
+        java.io.File certFile = null;
+
+        if (certPath != null && !certPath.isEmpty()) {
+            java.io.File f = new java.io.File(certPath);
+            if (f.exists()) certFile = f;
+        }
+        if (certFile == null) {
+            FileChooser fc = new FileChooser();
+            fc.setTitle("Selecionar Certificado Digital (.pfx)");
+            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Certificado PKCS#12", "*.pfx", "*.p12"));
+            certFile = fc.showOpenDialog(documentListViewSolicitacoes.getScene().getWindow());
+            if (certFile == null) return null;
+        }
+
+        String senha = configService.getCertPassword();
+        if (senha == null || senha.isEmpty()) {
+            senha = solicitarSenha();
+        }
+        if (senha == null) return null;
+        return new A1Credenciais(certFile, senha.toCharArray());
+    }
+
+    private void onSignSolicitacao() {
+        if (documentListViewSolicitacoes == null) return;
+
+        List<SignableItem> selecionados = documentListViewSolicitacoes.getItems().stream()
+                .filter(SignableItem::isSelected)
+                .collect(Collectors.toList());
+
+        if (selecionados.size() != 1) {
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("Aviso");
+            alert.setHeaderText(null);
+            alert.setContentText(selecionados.isEmpty()
+                    ? "Selecione uma proposição para assinar."
+                    : "Selecione apenas uma proposição por vez para solicitações de assinatura.");
+            alert.showAndWait();
+            return;
+        }
+
+        if (!(selecionados.get(0) instanceof AssinaturaItem item)) return;
+
+        // Escolha de tipo de certificado
+        Alert typeAlert = new Alert(Alert.AlertType.CONFIRMATION);
+        typeAlert.setTitle("Tipo de Certificado");
+        typeAlert.setHeaderText("Assinatura de solicitação: " + item.getHeader());
+        typeAlert.setContentText("Qual tipo de certificado deseja usar?");
+        ButtonType btnA1 = new ButtonType("Arquivo (A1)");
+        ButtonType btnA3 = new ButtonType("Token (A3)");
+        ButtonType btnCancel = new ButtonType("Cancelar", ButtonBar.ButtonData.CANCEL_CLOSE);
+        typeAlert.getButtonTypes().setAll(btnA1, btnA3, btnCancel);
+        Optional<ButtonType> typeResult = typeAlert.showAndWait();
+        if (typeResult.isEmpty() || typeResult.get() == btnCancel) return;
+
+        boolean useA3 = typeResult.get() == btnA3;
+
+        // Coleta credenciais na thread FX
+        final KeyStore[] ksHolder = {null};
+        final String[] aliasHolder = {null};
+        final char[][] pinHolder = {null};
+        final TokenService[] tokenServiceHolder = {null};
+        final String[] libPathHolder = {null};
+
+        if (useA3) {
+            A3Credenciais creds = promptA3Credenciais();
+            if (creds == null) { log("Operação cancelada.\n"); return; }
+            tokenServiceHolder[0] = new TokenService();
+            libPathHolder[0] = creds.libPath();
+            pinHolder[0] = creds.pin();
+        } else {
+            A1Credenciais creds = promptA1Credenciais();
+            if (creds == null) { log("Operação cancelada.\n"); return; }
+            try {
+                KeyStore ks = KeyStore.getInstance("PKCS12");
+                try (FileInputStream fis = new FileInputStream(creds.certFile())) {
+                    ks.load(fis, creds.senha());
+                }
+                String alias = null;
+                Enumeration<String> aliases = ks.aliases();
+                while (aliases.hasMoreElements()) {
+                    String a = aliases.nextElement();
+                    if (ks.isKeyEntry(a)) { alias = a; break; }
+                }
+                if (alias == null) {
+                    new Alert(Alert.AlertType.ERROR, "Nenhuma chave privada encontrada no certificado.").showAndWait();
+                    return;
+                }
+                ksHolder[0] = ks;
+                aliasHolder[0] = alias;
+                pinHolder[0] = creds.senha();
+            } catch (Exception e) {
+                new Alert(Alert.AlertType.ERROR, "Erro ao carregar certificado: " + e.getMessage()).showAndWait();
+                return;
+            }
+        }
+
+        log("Iniciando fluxo de assinatura colaborativa para: " + item.getHeader() + "\n");
+
+        new Thread(() -> {
+            // 1. Garantir PDF baixado
+            if (item.getOriginalBytes() == null) {
+                Platform.runLater(() -> log("Baixando PDF da proposição...\n"));
+                try {
+                    JsonNode jsonNode = item.getJsonData();
+                    String urlStr = jsonNode.has("texto_original") ? jsonNode.get("texto_original").asText() : null;
+                    if (urlStr == null || urlStr.isBlank() || "null".equals(urlStr)) {
+                        try (InputStream is = ApiService.getInstance().get("materia", "proposicao", item.getProposicaoId(), null, null)) {
+                            JsonNode detalhe = new ObjectMapper().readTree(is);
+                            urlStr = detalhe.has("texto_original") ? detalhe.get("texto_original").asText() : null;
+                        }
+                    }
+                    if (urlStr == null || urlStr.isBlank() || "null".equals(urlStr)) {
+                        Platform.runLater(() -> {
+                            Alert a = new Alert(Alert.AlertType.ERROR);
+                            a.setTitle("Erro"); a.setHeaderText(null);
+                            a.setContentText("A proposição não possui arquivo PDF disponível para assinatura.");
+                            a.showAndWait();
+                        });
+                        return;
+                    }
+                    try (InputStream is = getInputStreamFromUrl(urlStr)) {
+                        byte[] bytes = is.readAllBytes();
+                        item.setOriginalBytes(bytes);
+                        item.setPdDocument(Loader.loadPDF(bytes));
+                    }
+                } catch (Exception e) {
+                    Platform.runLater(() -> {
+                        Alert a = new Alert(Alert.AlertType.ERROR);
+                        a.setTitle("Erro"); a.setHeaderText(null);
+                        a.setContentText("Erro ao baixar o PDF: " + e.getMessage());
+                        a.showAndWait();
+                    });
+                    return;
+                }
+            }
+
+            // 2. Capturar lock
+            Platform.runLater(() -> log("Capturando lock de assinatura...\n"));
+            JsonNode lockResp;
+            try {
+                lockResp = ApiService.getInstance().capturarAssinatura(item.getProposicaoId());
+            } catch (Exception e) {
+                String msg = e.getMessage();
+                Platform.runLater(() -> {
+                    String msgUsuario = (msg != null && msg.contains("409"))
+                            ? "Outro vereador está assinando esta proposição no momento. Aguarde e tente novamente."
+                            : "Não foi possível iniciar a assinatura: " + msg;
+                    Alert a = new Alert(Alert.AlertType.ERROR);
+                    a.setTitle("Erro"); a.setHeaderText("Falha ao capturar assinatura");
+                    a.setContentText(msgUsuario); a.showAndWait();
+                });
+                return;
+            }
+
+            String hashCode = lockResp.has("hash_code") ? lockResp.get("hash_code").asText() : null;
+            ZonedDateTime dataCaptura = null;
+            try {
+                if (lockResp.has("data_captura")) dataCaptura = ZonedDateTime.parse(lockResp.get("data_captura").asText());
+            } catch (Exception ignored) {}
+
+            item.setStatusAssinatura("A");
+            itemComLockAtivo = item;
+            final ZonedDateTime finalDataCaptura = dataCaptura;
+
+            // Buscar autorId do lock para polling
+            int autorIdLock = -1;
+            try {
+                InputStream isAs = ApiService.getInstance().getAssinantes(item.getProposicaoId());
+                JsonNode assinantes = new ObjectMapper().readTree(isAs);
+                if (assinantes.isArray()) {
+                    for (JsonNode a : assinantes) {
+                        if ("A".equals(a.has("status") ? a.get("status").asText() : "")) {
+                            autorIdLock = a.has("autor_id") ? a.get("autor_id").asInt() : -1;
+                            break;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+            item.setAutorIdEmAssinatura(autorIdLock);
+            final int finalAutorIdLock = autorIdLock;
+
+            Platform.runLater(() -> {
+                if (documentListViewSolicitacoes != null) documentListViewSolicitacoes.refresh();
+                if (finalDataCaptura != null) iniciarCountdown(item, finalDataCaptura);
+                log("Lock capturado. Verificando integridade do arquivo...\n");
+            });
+
+            // 3. Verificar hash SHA-256
+            if (hashCode != null && !hashCode.isBlank()) {
+                try {
+                    String hashLocal = calcularHashSHA256(item.getOriginalBytes());
+                    if (!hashCode.equalsIgnoreCase(hashLocal)) {
+                        liberarLockComErro(item, "O arquivo foi alterado no servidor desde que foi baixado. Atualize a lista e tente novamente.");
+                        return;
+                    }
+                } catch (Exception e) {
+                    liberarLockComErro(item, "Erro ao verificar integridade do arquivo: " + e.getMessage());
+                    return;
+                }
+            }
+
+            Platform.runLater(() -> log("Integridade verificada. Assinando...\n"));
+
+            // 4. Abrir KeyStore A3 (se necessário) e assinar
+            try {
+                if (useA3) {
+                    TokenService ts = tokenServiceHolder[0];
+                    KeyStore ks = (libPathHolder[0] != null)
+                            ? ts.getKeyStore(libPathHolder[0], pinHolder[0])
+                            : ts.getKeyStore(pinHolder[0]);
+                    String alias = null;
+                    Enumeration<String> aliases = ks.aliases();
+                    while (aliases.hasMoreElements()) { alias = aliases.nextElement(); break; }
+                    if (alias == null) throw new Exception("Nenhum certificado encontrado no Token.");
+                    ksHolder[0] = ks;
+                    aliasHolder[0] = alias;
+                }
+
+                AssinaturaService service = new AssinaturaService();
+                service.assinarDocumentos(List.of(item), ksHolder[0], aliasHolder[0], pinHolder[0]);
+            } catch (Exception e) {
+                liberarLockComErro(item, "Erro ao assinar o documento: " + e.getMessage());
+                return;
+            }
+
+            Platform.runLater(() -> log("Documento assinado. Enviando ao servidor...\n"));
+
+            // 5. Upload do PDF assinado
+            try {
+                byte[] pdfBytes = item.getSignedBytes();
+                if (pdfBytes == null && item.getPdDocumentSigned() != null) {
+                    try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                        item.getPdDocumentSigned().save(baos);
+                        pdfBytes = baos.toByteArray();
+                    }
+                }
+                if (pdfBytes == null) {
+                    liberarLockComErro(item, "Nenhum PDF assinado disponível para envio.");
+                    return;
+                }
+                Map<String, Object> form = new HashMap<>();
+                form.put("texto_original", new ApiService.FileData("arq.pdf", pdfBytes, "application/pdf"));
+                ApiService.getInstance().patch("materia", "proposicao", item.getProposicaoId(), null, form, null);
+            } catch (Exception e) {
+                liberarLockComErro(item, "Erro ao enviar o documento assinado: " + e.getMessage());
+                return;
+            }
+
+            Platform.runLater(() -> {
+                pararCountdown();
+                log("Documento enviado. Aguardando confirmação do servidor...\n");
+            });
+
+            // 6. Iniciar polling
+            iniciarPolling(item, finalAutorIdLock);
+
+        }).start();
+    }
+
     @FXML
     private void onSign() {
+        // Delegar para o fluxo de solicitação se a aba Solicitações estiver ativa
+        if (currentMode == ViewMode.M1
+                && tabPaneM1 != null
+                && tabPaneM1.getSelectionModel().getSelectedItem() == tabSolicitacoes) {
+            onSignSolicitacao();
+            return;
+        }
+
         List<SignableItem> selectedItems = documentListView.getItems().stream()
             .filter(SignableItem::isSelected)
             .collect(Collectors.toList());
@@ -1431,6 +2178,10 @@ public class DocumentViewerController {
             JsonNode jsonData = documentItem.getJsonData();
             return jsonData != null && jsonData.has("data_envio") && !jsonData.get("data_envio").isNull();
         }
+        if (item instanceof AssinaturaItem assinaturaItem) {
+            // Itens já assinados não são editáveis (não devem aparecer, mas defesa)
+            return "S".equals(assinaturaItem.getStatusAssinatura());
+        }
         return false;
     }
 
@@ -1605,5 +2356,28 @@ public class DocumentViewerController {
         public File getSourceFile() {
             return sourceFile;
         }
+    }
+
+    /** Item representando uma proposição em que o usuário logado é co-signatário. */
+    public static class AssinaturaItem extends BaseSignableItem {
+        private final JsonNode jsonData;
+        private final int proposicaoId;
+        /** Status do co-signatário logado: "P" (Pendente), "A" (Em Assinatura), "S" (Assinado). */
+        private String statusAssinatura = "P";
+        /** autor_id do assinante que detém o lock ativo (obtido via GET /assinantes/). */
+        private int autorIdEmAssinatura = -1;
+
+        public AssinaturaItem(String header, String description, JsonNode jsonData) {
+            super(header, description);
+            this.jsonData = jsonData;
+            this.proposicaoId = jsonData.has("id") ? jsonData.get("id").asInt() : -1;
+        }
+
+        public JsonNode getJsonData() { return jsonData; }
+        public int getProposicaoId() { return proposicaoId; }
+        public String getStatusAssinatura() { return statusAssinatura; }
+        public void setStatusAssinatura(String statusAssinatura) { this.statusAssinatura = statusAssinatura; }
+        public int getAutorIdEmAssinatura() { return autorIdEmAssinatura; }
+        public void setAutorIdEmAssinatura(int autorIdEmAssinatura) { this.autorIdEmAssinatura = autorIdEmAssinatura; }
     }
 }
