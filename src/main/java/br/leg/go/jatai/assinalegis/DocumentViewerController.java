@@ -1474,7 +1474,7 @@ public class DocumentViewerController {
         });
     }
 
-    private void iniciarPolling(AssinaturaItem item, int autorIdLock) {
+    private void iniciarPolling(AssinaturaItem item, int autorIdLock, String cnCertificado) {
         final int proposicaoId = item.getProposicaoId();
         final int maxTentativas = 24; // 24 × 5s = 2 min
         final int[] tentativas = {0};
@@ -1522,11 +1522,16 @@ public class DocumentViewerController {
                     itemComLockAtivo = null;
                     item.setStatusAssinatura("P");
                     Platform.runLater(() -> {
-                        log("O servidor rejeitou a assinatura: o CN do certificado não coincide com o cadastrado.\n");
+                        log("O servidor rejeitou a assinatura.\n");
+                        log("  CN utilizado  : " + cnCertificado + "\n");
+                        log("  Verifique se este CN está cadastrado no campo 'Certificado CN' do seu usuário.\n");
                         Alert alert = new Alert(Alert.AlertType.WARNING);
                         alert.setTitle("Assinatura Rejeitada");
                         alert.setHeaderText("O servidor não confirmou a assinatura");
-                        alert.setContentText("O CN do certificado utilizado não corresponde ao certificado cadastrado para o seu usuário.\n\nContate o administrador do sistema para verificar o campo 'Certificado CN'.");
+                        alert.setContentText(
+                                "O CN do certificado utilizado não corresponde ao cadastrado para o seu usuário.\n\n"
+                                + "CN utilizado: " + cnCertificado + "\n\n"
+                                + "Informe este CN ao administrador do sistema para que ele atualize o campo 'Certificado CN'.");
                         alert.showAndWait();
                         if (documentListViewSolicitacoes != null) documentListViewSolicitacoes.refresh();
                     });
@@ -1547,6 +1552,27 @@ public class DocumentViewerController {
                 log("Erro no polling de status: " + e.getMessage() + "\n");
             }
         }, 5, 5, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Extrai o CN do Subject de um certificado X.509.
+     * Retorna o DN completo como fallback se o atributo CN não for encontrado.
+     */
+    private String extrairCnDoCertificado(KeyStore ks, String alias) {
+        try {
+            java.security.cert.X509Certificate cert =
+                    (java.security.cert.X509Certificate) ks.getCertificate(alias);
+            if (cert == null) return "(certificado não encontrado)";
+            String dn = cert.getSubjectX500Principal().getName();
+            javax.naming.ldap.LdapName ldap = new javax.naming.ldap.LdapName(dn);
+            return ldap.getRdns().stream()
+                    .filter(rdn -> rdn.getType().equalsIgnoreCase("CN"))
+                    .map(rdn -> rdn.getValue().toString())
+                    .findFirst()
+                    .orElse(dn);
+        } catch (Exception e) {
+            return "(erro ao ler CN: " + e.getMessage() + ")";
+        }
     }
 
     /**
@@ -1817,6 +1843,7 @@ public class DocumentViewerController {
             Platform.runLater(() -> log("Integridade verificada. Assinando...\n"));
 
             // 4. Abrir KeyStore A3 (se necessário) e assinar
+            final String[] cnHolder = {"(não disponível)"};
             try {
                 if (useA3) {
                     TokenService ts = tokenServiceHolder[0];
@@ -1830,6 +1857,8 @@ public class DocumentViewerController {
                     ksHolder[0] = ks;
                     aliasHolder[0] = alias;
                 }
+                cnHolder[0] = extrairCnDoCertificado(ksHolder[0], aliasHolder[0]);
+                Platform.runLater(() -> log("Certificado selecionado — CN: " + cnHolder[0] + "\n"));
 
                 AssinaturaService service = new AssinaturaService();
                 service.assinarDocumentos(List.of(item), ksHolder[0], aliasHolder[0], pinHolder[0]);
@@ -1867,7 +1896,7 @@ public class DocumentViewerController {
             });
 
             // 6. Iniciar polling
-            iniciarPolling(item, finalAutorIdLock);
+            iniciarPolling(item, finalAutorIdLock, cnHolder[0]);
 
         }).start();
     }
