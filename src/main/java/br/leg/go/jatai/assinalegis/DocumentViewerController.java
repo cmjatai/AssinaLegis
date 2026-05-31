@@ -374,7 +374,7 @@ public class DocumentViewerController {
                     group.getChildren().remove(lastRect.get());
                 }
 
-                SignableItem item = documentListView.getSelectionModel().getSelectedItem();
+                SignableItem item = getItemVisualizado();
                 if (item == null) {
                     log("Nenhum documento selecionado para adicionar a marcação.\n");
                     return;
@@ -1081,11 +1081,24 @@ public class DocumentViewerController {
     }
 
     private void updateCurrentItemState() {
-        SignableItem selectedItem = documentListView.getSelectionModel().getSelectedItem();
+        SignableItem selectedItem = getItemVisualizado();
         if (selectedItem != null) {
             selectedItem.setSavedPageIndex(currentPageIndex);
             selectedItem.setSavedRect(lastRect.get());
         }
+    }
+
+    /**
+     * Retorna o item atualmente selecionado na lista ativa:
+     * aba "Solicitações" → documentListViewSolicitacoes; demais casos → documentListView.
+     */
+    private SignableItem getItemVisualizado() {
+        if (tabPaneM1 != null
+                && tabSolicitacoes != null
+                && tabPaneM1.getSelectionModel().getSelectedItem() == tabSolicitacoes) {
+            return documentListViewSolicitacoes.getSelectionModel().getSelectedItem();
+        }
+        return documentListView.getSelectionModel().getSelectedItem();
     }
 
     @FXML
@@ -1536,10 +1549,22 @@ public class DocumentViewerController {
         }, 5, 5, TimeUnit.SECONDS);
     }
 
-    private String calcularHashSHA256(byte[] bytes) throws Exception {
-        MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        byte[] hash = digest.digest(bytes);
-        return HexFormat.of().formatHex(hash);
+    /**
+     * Extrai o MD5 puro do hash_code composto retornado pelo backend.
+     * Formato esperado: {@code P<MD5>K<id>}  (ex: "Pabc123...K42")
+     */
+    private String extrairMd5DoHashCode(String hashCode) {
+        if (hashCode == null) return null;
+        // Remove prefixo 'P' e tudo a partir do último 'K'
+        int kIdx = hashCode.lastIndexOf('K');
+        String md5 = (kIdx > 0) ? hashCode.substring(1, kIdx) : hashCode.substring(1);
+        return md5;
+    }
+
+    /** Calcula o MD5 dos bytes em hexadecimal minúsculo. */
+    private String calcularMd5(byte[] bytes) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("MD5");
+        return HexFormat.of().formatHex(digest.digest(bytes));
     }
 
     // ─── Fluxo principal de assinatura de solicitação ──────────────
@@ -1771,11 +1796,15 @@ public class DocumentViewerController {
                 log("Lock capturado. Verificando integridade do arquivo...\n");
             });
 
-            // 3. Verificar hash SHA-256
+            // 3. Verificar integridade do arquivo (hash_code formato: P{MD5}K{id})
             if (hashCode != null && !hashCode.isBlank()) {
                 try {
-                    String hashLocal = calcularHashSHA256(item.getOriginalBytes());
-                    if (!hashCode.equalsIgnoreCase(hashLocal)) {
+                    String md5Servidor = extrairMd5DoHashCode(hashCode);
+                    String md5Local    = calcularMd5(item.getOriginalBytes());
+                    log("[DEBUG] hash servidor (raw): " + hashCode + "\n");
+                    log("[DEBUG] MD5 servidor        : " + md5Servidor + "\n");
+                    log("[DEBUG] MD5 local           : " + md5Local + "\n");
+                    if (!md5Servidor.equalsIgnoreCase(md5Local)) {
                         liberarLockComErro(item, "O arquivo foi alterado no servidor desde que foi baixado. Atualize a lista e tente novamente.");
                         return;
                     }
